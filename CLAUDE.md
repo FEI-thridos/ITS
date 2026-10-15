@@ -21,6 +21,8 @@ Angular web UI polling every 1 s. Fully containerized, deployed by Azure DevOps 
 | – | `documentation/`, `backlog/`, root files (`CLAUDE.md`, `.gitignore`) – change only when the user asks | – |
 
 Per phase: **planner → user approves plan → expert(s) implement → reviewer → user reviews.**
+- The reviewer always validates the **Acceptance Criteria** (`backlog/backlog.csv`) of the User Stories in scope and groups findings by owning agent.
+- Findings are routed by the main session: each owner section is sent to that expert agent to fix, then the reviewer re-checks. Findings owned by `user` are asked to the user. (Subagents cannot message each other directly.)
 Stay inside your folder. Changes needed elsewhere go through the user.
 
 ## Working rules

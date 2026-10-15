@@ -1,64 +1,93 @@
-Order No,Work Item Type,Title,Description,Activity,Estimated Hours
-1,Epic,KUKA FM Middleware,"Middleware between an upstream system and KUKA AMR Fleet Manager: dispatch/cancel missions, sync mission and robot states, web UI.",,
-1.1,Feature,Mission Management,"Dispatching, cancelling and monitoring missions created by the middleware (UC1–UC5).",,
-1.1.1,User Story,UC1 Dispatch mission,As an operator I want to dispatch a new RACK_MOVE mission to a selected robot.,,
-1.1.1.1,Task,Endpoint POST /api/missions + input validation,"Create POST /api/missions. Validate start node, target node, container code, priority (1–99) and that the robot exists. Return 201 or a validation error.",Backend,6
-1.1.1.2,Task,DB: insert mission,"Persist the new mission with status 10 (Created), generated mission_code/request_id and robot FK. Write only after KUKA FM confirms success.",Backend,4
-1.1.1.3,Task,KUKA FM: submitMission call (RACK_MOVE),"Call submitMission at https://kukafm.its.fei with Authorization token. Build RACK_MOVE body (missionData start/target node, robotIds); other params from appsettings. Handle success=false.",Backend,6
-1.1.1.4,Task,Dispatch dialog + robot select,"Dialog opened by '+ Dispatch mission' with robot select (robots from DB), start/target node, container code and priority. Show success or error message.",Frontend,6
-1.1.1.5,Task,Unit tests for dispatch mission,"Unit tests for input validation, KUKA submitMission request mapping and service logic (KUKA client and DB mocked).",Testing,6
-1.1.2,User Story,UC2 Cancel mission,As an operator I want to force-cancel a running mission.,,
-1.1.2.1,Task,Endpoint POST /api/missions/{code}/cancel,"Create POST /api/missions/{code}/cancel. Return 200 on success, 404 if not found, 409 if mission is not active.",Backend,4
-1.1.2.2,Task,DB: load mission + active status check,"Load mission by mission_code and check that its status is active (10, 20, 25, 28, 50).",Backend,2
-1.1.2.3,Task,KUKA FM: missionCancel call (FORCE),Call missionCancel with missionCode and cancelMode FORCE. Final status (31 Cancelled) is stored later by mission sync.,Backend,4
-1.1.2.4,Task,Cancel button + confirm dialog,Cancel button shown only on active missions; confirmation dialog mentioning FORCE cancel; show result message.,Frontend,3
-1.1.2.5,Task,Unit tests for cancel mission,Unit tests for active / not-active / not-found cases and KUKA FM error handling (KUKA client and DB mocked).,Testing,4
-1.1.3,User Story,UC3 View mission status,As an operator I want to see the current status of active and finished missions.,,
-1.1.3.1,Task,Endpoint GET /api/missions (active/finished filter),"Create GET /api/missions with optional filter state=active|finished; return missions with status code and name, robot and timestamps.",Backend,3
-1.1.3.2,Task,DB: missions query,"EF Core query over mission table with status filter, robot join and ordering by created_at desc.",Backend,2
-1.1.3.3,Task,Missions table + filter + 1 s polling,"Missions table (code, status badge, robot, nodes, container, priority, times) with All/Active/Finished filter and auto-refresh every 1 s.",Frontend,8
-1.1.3.4,Task,Unit tests for view mission status,Unit tests for the active/finished filter logic and the missions service.,Testing,3
-1.1.4,User Story,UC4 View mission status history,As an operator I want to see all previous statuses of a mission.,,
-1.1.4.1,Task,Endpoint GET /api/missions/{code}/history,"Create GET /api/missions/{code}/history returning previous states (status, robot, valid_from, valid_to).",Backend,2
-1.1.4.2,Task,DB: mission history query,Query mission_status_history by mission_id ordered by valid_to desc.,Backend,2
-1.1.4.3,Task,Show history rows in missions table,'Show history' checkbox adds grey previous-state rows under each mission.,Frontend,4
-1.1.4.4,Task,Unit tests for view mission status history,Unit tests for the mission history service (existing/unknown mission).,Testing,2
-1.1.5,User Story,UC5 Synchronize mission status,As the system I want to periodically sync statuses of tracked missions from KUKA FM.,,
-1.1.5.1,Task,Scheduler job for mission sync (interval from appsettings),Hosted background service running on interval from appsettings; starts only after first robot sync finished; logs to Seq.,Backend,4
-1.1.5.2,Task,DB: update mission + write status history,"For each changed mission copy previous state into mission_status_history, update status/robot/updated_at; set completed_at for final statuses.",Backend,4
-1.1.5.3,Task,KUKA FM: jobQuery call (once per tick),Call jobQuery once per tick (limit and filters from appsettings) and match results to active missions by jobCode.,Backend,5
-1.1.5.4,Task,Unit tests for mission sync,"Unit tests for sync logic: status change, no change, final status, unknown jobCode and KUKA FM error.",Testing,5
-1.2,Feature,Robot Management,Monitoring robots and their states synchronized from KUKA FM (UC6–UC8).,,
-1.2.1,User Story,UC6 View robot status,As an operator I want to see all robots and their current state.,,
-1.2.1.1,Task,Endpoint GET /api/robots + status mapping (Available/Busy/Offline),Create GET /api/robots returning robots with KUKA status and mapped state (Idle→Available; Departure/Executing/Charging/Updating→Busy; Offline/Abnormal→Offline).,Backend,3
-1.2.1.2,Task,DB: robots query,EF Core query over robot table ordered by robot_code.,Backend,2
-1.2.1.3,Task,Robots table + 1 s polling,"Robots table (code, type, state badge, KUKA status, battery bar, map, node, mission, updated) with auto-refresh every 1 s.",Frontend,6
-1.2.1.4,Task,Unit tests for view robot status,Unit tests for status mapping (Available/Busy/Offline) and the robots service.,Testing,3
-1.2.2,User Story,UC7 View robot status history,As an operator I want to see all previous states of a robot.,,
-1.2.2.1,Task,Endpoint GET /api/robots/{id}/history,Create GET /api/robots/{id}/history returning previous states with valid_from/valid_to.,Backend,2
-1.2.2.2,Task,DB: robot history query,Query robot_status_history by robot_id ordered by valid_to desc.,Backend,2
-1.2.2.3,Task,Show history rows in robots table,'Show history' checkbox adds grey previous-state rows under each robot.,Frontend,3
-1.2.2.4,Task,Unit tests for view robot status history,Unit tests for the robot history service (existing/unknown robot).,Testing,2
-1.2.3,User Story,UC8 Synchronize robot status,As the system I want to periodically sync all robots from KUKA FM.,,
-1.2.3.1,Task,Scheduler job for robot sync (runs before mission sync on startup),Hosted background service on interval from appsettings; runs first on startup and signals mission sync to start.,Backend,4
-1.2.3.2,Task,DB: insert/update robot + write status history,Insert new robots; for every changed robot copy previous state into robot_status_history and update current values.,Backend,4
-1.2.3.3,Task,KUKA FM: robotQuery call,Call robotQuery without filters to get all robots; map response fields to robot entity.,Backend,4
-1.2.3.4,Task,Unit tests for robot sync,"Unit tests for sync logic: new robot, changed robot, unchanged robot and KUKA FM error.",Testing,5
-1.3,Feature,Deployment,"Containerization, CI and CD of the whole application on the local Azure DevOps Windows agent with Docker Desktop.",,
-1.3.1,User Story,Containerize application,As a team we want the application to run fully in Docker containers.,,
-1.3.1.1,Task,Backend Dockerfile (multi-stage .NET build),"Multi-stage Dockerfile: build and publish with .NET SDK image, run on ASP.NET runtime image.",Deployment,3
-1.3.1.2,Task,Frontend Dockerfile (Angular build + nginx image),"Multi-stage Dockerfile: build Angular app with Node image, serve static files from nginx image.",Deployment,3
-1.3.1.3,Task,nginx config: serve SPA + proxy /api to backend,nginx.conf serving SPA with fallback to index.html and reverse proxy /api to the backend container.,Deployment,2
-1.3.1.4,Task,"docker-compose: api, web, postgres, seq with volumes","Compose file with web (8080), api (internal only), postgres (5432) and seq (5341) with persistent volumes; images always built.",Deployment,4
-1.3.1.5,Task,Environment configs,appsettings.Development.json with root/password DB credentials; Production values injected by the pipeline.,Deployment,3
-1.3.2,User Story,CI pipeline,"As a team we want every change built, checked and tested automatically.",,
-1.3.2.1,Task,ci.yml: build backend + frontend,Azure Pipelines YAML building backend and frontend; agent pool and name taken from pipeline variables.,Deployment,3
-1.3.2.2,Task,NuGet vulnerability check,Fail the build when vulnerable NuGet packages are found.,Deployment,2
-1.3.2.3,Task,npm audit check,Run npm audit on the frontend and fail on high/critical vulnerabilities.,Deployment,1
-1.3.2.4,Task,Run backend tests + publish results,Run dotnet test for backend unit tests and publish test results to the pipeline.,Deployment,2
-1.3.3,User Story,CD pipeline (local Docker),As a team we want successful builds deployed automatically to local Docker.,,
-1.3.3.1,Task,cd.yml,Azure Pipelines YAML used for deployment. Manual run only (trigger: none).,Deployment,2
-1.3.3.2,Task,Generate appsettings.Production.json from pipeline variables,"Create appsettings.Production.json from secret pipeline variables (KUKA FM token, DB credentials).",Deployment,3
-1.3.3.3,Task,docker compose build + up -d on agent Docker Desktop,Run docker compose build and up -d on the agent host's Docker Desktop (Linux containers). Include docker builder prune -af to cleanup used resources.,Deployment,3
-1.3.3.4,Task,Apply DB migrations on API startup,API applies EF Core migrations on startup (Database.Migrate()) so every deployment updates the PostgreSQL schema; no migration step in the pipeline.,Backend,2
-1.3.3.5,Task,Smoke check after deployment (frontend + /api),After deploy verify that the frontend (8080) and /api through nginx respond; fail the pipeline otherwise.,Deployment,2
+Order No,Work Item Type,Title,Description,Acceptance Criteria,Activity,Estimated Hours
+1,Epic,KUKA FM Middleware,"Middleware between an upstream system and KUKA AMR Fleet Manager: dispatch/cancel missions, sync mission and robot states, web UI.",,,
+1.1,Feature,Mission Management,"Dispatching, cancelling and monitoring missions created by the middleware (UC1–UC5).","• Missions can be dispatched, cancelled and monitored through the middleware without using the KUKA FM UI
+• Only missions dispatched by the middleware are tracked, each with current status and full status history
+• All user operations and KUKA calls are logged in Seq",,
+1.1.1,User Story,UC1 Dispatch mission,As an operator I want to dispatch a new RACK_MOVE mission to a selected robot.,"• Dialog requires a robot from the DB, start node, target node, container code and priority 1–99
+• Invalid input is rejected with 400 and no KUKA call is made
+• On KUKA success the mission is stored with status 10 (Created) and appears in the list
+• On KUKA error an error is shown (502), nothing is stored and the error is logged",,
+1.1.1.1,Task,Endpoint POST /api/missions + input validation,"Create POST /api/missions. Validate start node, target node, container code, priority (1–99) and that the robot exists. Return 201 or a validation error.",,Backend,6
+1.1.1.2,Task,DB: insert mission,"Persist the new mission with status 10 (Created), generated mission_code/request_id and robot FK. Write only after KUKA FM confirms success.",,Backend,4
+1.1.1.3,Task,KUKA FM: submitMission call (RACK_MOVE),"Call submitMission at https://kukafm.its.fei with Authorization token. Build RACK_MOVE body (missionData start/target node, robotIds); other params from appsettings. Handle success=false.",,Backend,6
+1.1.1.4,Task,Dispatch dialog + robot select,"Dialog opened by '+ Dispatch mission' with robot select (robots from DB), start/target node, container code and priority. Show success or error message.",,Frontend,6
+1.1.1.5,Task,Unit tests for dispatch mission,"Unit tests for input validation, KUKA submitMission request mapping and service logic (KUKA client and DB mocked).",,Testing,6
+1.1.2,User Story,UC2 Cancel mission,As an operator I want to force-cancel a running mission.,"• Cancel is offered only for active missions (10, 20, 25, 28, 50) and needs confirmation
+• missionCancel is sent with FORCE
+• Unknown mission returns 404, non-active mission returns 409
+• Final status Cancelled (31) appears after the next sync",,
+1.1.2.1,Task,Endpoint POST /api/missions/{code}/cancel,"Create POST /api/missions/{code}/cancel. Return 200 on success, 404 if not found, 409 if mission is not active.",,Backend,4
+1.1.2.2,Task,DB: load mission + active status check,"Load mission by mission_code and check that its status is active (10, 20, 25, 28, 50).",,Backend,2
+1.1.2.3,Task,KUKA FM: missionCancel call (FORCE),Call missionCancel with missionCode and cancelMode FORCE. Final status (31 Cancelled) is stored later by mission sync.,,Backend,4
+1.1.2.4,Task,Cancel button + confirm dialog,Cancel button shown only on active missions; confirmation dialog mentioning FORCE cancel; show result message.,,Frontend,3
+1.1.2.5,Task,Unit tests for cancel mission,Unit tests for active / not-active / not-found cases and KUKA FM error handling (KUKA client and DB mocked).,,Testing,4
+1.1.3,User Story,UC3 View mission status,As an operator I want to see the current status of active and finished missions.,"• List shows code, status, robot, nodes, container, priority and times
+• All / Active / Finished filter works
+• Data refreshes every 1 s while Auto-refresh is on",,
+1.1.3.1,Task,Endpoint GET /api/missions (active/finished filter),"Create GET /api/missions with optional filter state=active|finished; return missions with status code and name, robot and timestamps.",,Backend,3
+1.1.3.2,Task,DB: missions query,"EF Core query over mission table with status filter, robot join and ordering by created_at desc.",,Backend,2
+1.1.3.3,Task,Missions table + filter + 1 s polling,"Missions table (code, status badge, robot, nodes, container, priority, times) with All/Active/Finished filter and auto-refresh every 1 s.",,Frontend,8
+1.1.3.4,Task,Unit tests for view mission status,Unit tests for the active/finished filter logic and the missions service.,,Testing,3
+1.1.4,User Story,UC4 View mission status history,As an operator I want to see all previous statuses of a mission.,"• Show history shows all previous states, newest first, with valid-from and valid-to times
+• Unknown mission returns 404",,
+1.1.4.1,Task,Endpoint GET /api/missions/{code}/history,"Create GET /api/missions/{code}/history returning previous states (status, robot, valid_from, valid_to).",,Backend,2
+1.1.4.2,Task,DB: mission history query,Query mission_status_history by mission_id ordered by valid_to desc.,,Backend,2
+1.1.4.3,Task,Show history rows in missions table,'Show history' checkbox adds grey previous-state rows under each mission.,,Frontend,4
+1.1.4.4,Task,Unit tests for view mission status history,Unit tests for the mission history service (existing/unknown mission).,,Testing,2
+1.1.5,User Story,UC5 Synchronize mission status,As the system I want to periodically sync statuses of tracked missions from KUKA FM.,"• Starts only after the first robot sync
+• One jobQuery per tick plus per-jobCode fallback for missing missions
+• Every change stores the previous state in history; a final status sets completed_at and the mission is no longer polled
+• KUKA errors are logged, nothing is written and the next tick retries",,
+1.1.5.1,Task,Scheduler job for mission sync (interval from appsettings),Hosted background service running on interval from appsettings; starts only after first robot sync finished; logs to Seq.,,Backend,4
+1.1.5.2,Task,DB: update mission + write status history,"For each changed mission copy previous state into mission_status_history, update status/robot/updated_at; set completed_at for final statuses.",,Backend,4
+1.1.5.3,Task,KUKA FM: jobQuery call (once per tick),Call jobQuery once per tick (limit and filters from appsettings) and match results to active missions by jobCode.,,Backend,5
+1.1.5.4,Task,Unit tests for mission sync,"Unit tests for sync logic: status change, no change, final status, unknown jobCode and KUKA FM error.",,Testing,5
+1.2,Feature,Robot Management,Monitoring robots and their states synchronized from KUKA FM (UC6–UC8).,"• All robots from KUKA FM are synced periodically with current state and full history
+• UI shows robots with mapped state Available / Busy / Offline",,
+1.2.1,User Story,UC6 View robot status,As an operator I want to see all robots and their current state.,"• List shows code, type, state badge, KUKA status, battery, map, node, mission and updated time
+• State mapping: Idle → Available; Departure, Executing, Charging, Updating → Busy; Offline, Abnormal → Offline
+• Data refreshes every 1 s while Auto-refresh is on",,
+1.2.1.1,Task,Endpoint GET /api/robots + status mapping (Available/Busy/Offline),Create GET /api/robots returning robots with KUKA status and mapped state (Idle→Available; Departure/Executing/Charging/Updating→Busy; Offline/Abnormal→Offline).,,Backend,3
+1.2.1.2,Task,DB: robots query,EF Core query over robot table ordered by robot_code.,,Backend,2
+1.2.1.3,Task,Robots table + 1 s polling,"Robots table (code, type, state badge, KUKA status, battery bar, map, node, mission, updated) with auto-refresh every 1 s.",,Frontend,6
+1.2.1.4,Task,Unit tests for view robot status,Unit tests for status mapping (Available/Busy/Offline) and the robots service.,,Testing,3
+1.2.2,User Story,UC7 View robot status history,As an operator I want to see all previous states of a robot.,"• Show history shows previous states, newest first, with valid-from and valid-to times
+• Unknown robot returns 404",,
+1.2.2.1,Task,Endpoint GET /api/robots/{id}/history,Create GET /api/robots/{id}/history returning previous states with valid_from/valid_to.,,Backend,2
+1.2.2.2,Task,DB: robot history query,Query robot_status_history by robot_id ordered by valid_to desc.,,Backend,2
+1.2.2.3,Task,Show history rows in robots table,'Show history' checkbox adds grey previous-state rows under each robot.,,Frontend,3
+1.2.2.4,Task,Unit tests for view robot status history,Unit tests for the robot history service (existing/unknown robot).,,Testing,2
+1.2.3,User Story,UC8 Synchronize robot status,As the system I want to periodically sync all robots from KUKA FM.,"• Runs first on startup, then on the configured interval
+• New robots are inserted
+• Any change stores the previous state in history, then updates the robot
+• KUKA errors are logged, nothing is written and the next tick retries
+• The token is never logged",,
+1.2.3.1,Task,Scheduler job for robot sync (runs before mission sync on startup),Hosted background service on interval from appsettings; runs first on startup and signals mission sync to start.,,Backend,4
+1.2.3.2,Task,DB: insert/update robot + write status history,Insert new robots; for every changed robot copy previous state into robot_status_history and update current values.,,Backend,4
+1.2.3.3,Task,KUKA FM: robotQuery call,Call robotQuery without filters to get all robots; map response fields to robot entity.,,Backend,4
+1.2.3.4,Task,Unit tests for robot sync,"Unit tests for sync logic: new robot, changed robot, unchanged robot and KUKA FM error.",,Testing,5
+1.3,Feature,Deployment,"Containerization, CI and CD of the whole application on the local Azure DevOps Windows agent with Docker Desktop.","• Application runs fully in Docker and is built, checked and deployed by Azure DevOps pipelines without manual file edits",,
+1.3.1,User Story,Containerize application,As a team we want the application to run fully in Docker containers.,"• docker compose up --build starts web (8080), api (internal only), postgres (5432) and seq (5341)
+• UI and /api work through nginx
+• Dev and prod use separate volumes",,
+1.3.1.1,Task,Backend Dockerfile (multi-stage .NET build),"Multi-stage Dockerfile: build and publish with .NET SDK image, run on ASP.NET runtime image.",,Deployment,3
+1.3.1.2,Task,Frontend Dockerfile (Angular build + nginx image),"Multi-stage Dockerfile: build Angular app with Node image, serve static files from nginx image.",,Deployment,3
+1.3.1.3,Task,nginx config: serve SPA + proxy /api to backend,nginx.conf serving SPA with fallback to index.html and reverse proxy /api to the backend container.,,Deployment,2
+1.3.1.4,Task,"docker-compose: api, web, postgres, seq with volumes","Compose file with web (8080), api (internal only), postgres (5432) and seq (5341) with persistent volumes; images always built.",,Deployment,4
+1.3.1.5,Task,Environment configs,appsettings.Development.json with root/password DB credentials; Production values injected by the pipeline.,,Deployment,3
+1.3.2,User Story,CI pipeline,"As a team we want every change built, checked and tested automatically.","• Manual run builds backend and frontend
+• Run fails on vulnerable NuGet packages, high/critical npm audit findings or failing unit tests
+• Test results are published",,
+1.3.2.1,Task,ci.yml: build backend + frontend,Azure Pipelines YAML building backend and frontend; agent pool and name taken from pipeline variables.,,Deployment,3
+1.3.2.2,Task,NuGet vulnerability check,Fail the build when vulnerable NuGet packages are found.,,Deployment,2
+1.3.2.3,Task,npm audit check,Run npm audit on the frontend and fail on high/critical vulnerabilities.,,Deployment,1
+1.3.2.4,Task,Run backend tests + publish results,Run dotnet test for backend unit tests and publish test results to the pipeline.,,Deployment,2
+1.3.3,User Story,CD pipeline (local Docker),As a team we want successful builds deployed automatically to local Docker.,"• Manual run only
+• Placeholders are replaced from secret variables before any docker command; secrets never appear in logs or the repo
+• Smoke check passes for :8080 and /api/health
+• Migrations are applied on API startup",,
+1.3.3.1,Task,cd.yml,Azure Pipelines YAML used for deployment. Manual run only (trigger: none).,,Deployment,2
+1.3.3.2,Task,Generate appsettings.Production.json from pipeline variables,"Create appsettings.Production.json from secret pipeline variables (KUKA FM token, DB credentials).",,Deployment,3
+1.3.3.3,Task,docker compose build + up -d on agent Docker Desktop,Run docker compose build and up -d on the agent host's Docker Desktop (Linux containers). Include docker builder prune -af to cleanup used resources.,,Deployment,3
+1.3.3.4,Task,Apply DB migrations on API startup,API applies EF Core migrations on startup (Database.Migrate()) so every deployment updates the PostgreSQL schema; no migration step in the pipeline.,,Backend,2
+1.3.3.5,Task,Smoke check after deployment (frontend + /api),After deploy verify that the frontend (8080) and /api through nginx respond; fail the pipeline otherwise.,,Deployment,2
