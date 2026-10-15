@@ -1,0 +1,138 @@
+# CD - deploy to Docker Desktop (Linux containers) on the agent host. Manual runs only.
+# The API applies EF Core migrations on startup, so there is no migration step.
+#
+# Required pipeline variables (defined on the pipeline):
+#   AgentPoolName    - name of the self-hosted agent pool (Windows agent on the Docker host)
+#   AgentName        - name of the agent in that pool
+#   DbName           - PostgreSQL database name     -> __DB_NAME__
+#   DbUser           - PostgreSQL user              -> __DB_USER__            (mark secret)
+#   DbPassword       - PostgreSQL password          -> __DB_PASSWORD__        (mark secret)
+#   KukaAccessToken  - KUKA FM Authorization token  -> __KUKA_ACCESS_TOKEN__  (mark secret)
+# Values must not contain a single quote or a line break (docker/.env.prod uses single-quoted values);
+# DbName, DbUser and DbPassword must also not contain ';' (Npgsql connection string).
+#
+# Placeholders are replaced in the agent's working copy only (appsettings.Production.json via jq,
+# docker/.env.prod as plain text) and restored from a backup at the end of the run.
+
+trigger: none
+pr: none
+
+pool:
+  name: $(AgentPoolName)
+  demands:
+    - Agent.Name -equals $(AgentName)
+
+variables:
+  JqVersion: 1.8.2
+  JqSha256: a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627
+  JqPath: $(Agent.TempDirectory)\jq.exe
+  AppSettingsPath: backend/src/KukaFm.Middleware.Api/appsettings.Production.json
+  EnvFilePath: docker/.env.prod
+  ComposeArgs: -f docker/docker-compose.yml --env-file docker/.env.prod
+
+steps:
+  - checkout: self
+    clean: true
+
+  - powershell: |
+      $ProgressPreference = 'SilentlyContinue'
+      Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jqlang/jq/releases/download/jq-$(JqVersion)/jq-windows-amd64.exe' -OutFile '$(JqPath)'
+      $hash = (Get-FileHash -Algorithm SHA256 -Path '$(JqPath)').Hash
+      if ($hash -ne '$(JqSha256)') { throw "jq checksum mismatch: $hash" }
+      & '$(JqPath)' --version
+    displayName: Download jq $(JqVersion)
+
+  - powershell: |
+      $placeholders = [ordered]@{
+        '__DB_NAME__'           = $env:DB_NAME
+        '__DB_USER__'           = $env:DB_USER
+        '__DB_PASSWORD__'       = $env:DB_PASSWORD
+        '__KUKA_ACCESS_TOKEN__' = $env:KUKA_ACCESS_TOKEN
+      }
+      foreach ($p in $placeholders.GetEnumerator()) {
+        # An undefined pipeline variable stays as the literal macro text '$(Name)'.
+        if ([string]::IsNullOrEmpty($p.Value) -or $p.Value.StartsWith('$(') -or $p.Value -match "['`r`n]") {
+          throw "Pipeline variable for $($p.Key) is not defined or contains a single quote / line break."
+        }
+        if ($p.Key -like '__DB_*' -and $p.Value.Contains(';')) { throw "Pipeline variable for $($p.Key) must not contain ';'." }
+      }
+      $appSettings = (Resolve-Path '$(AppSettingsPath)').Path
+      $envFile = (Resolve-Path '$(EnvFilePath)').Path
+      Copy-Item $appSettings, $envFile -Destination $env:AGENT_TEMPDIRECTORY   # originals, restored at the end of the run
+      $utf8 = New-Object System.Text.UTF8Encoding $false
+      [Console]::OutputEncoding = $utf8
+
+      # appsettings.Production.json: literal replacement in every JSON string; values come from env, never the command line.
+      $filter = @'
+      walk(if type == "string" then
+          split("__DB_NAME__") | join($ENV.DB_NAME)
+        | split("__DB_USER__") | join($ENV.DB_USER)
+        | split("__DB_PASSWORD__") | join($ENV.DB_PASSWORD)
+        | split("__KUKA_ACCESS_TOKEN__") | join($ENV.KUKA_ACCESS_TOKEN)
+      else . end)
+      '@
+      $filterPath = Join-Path $env:AGENT_TEMPDIRECTORY 'placeholders.jq'
+      [IO.File]::WriteAllText($filterPath, $filter, $utf8)
+      $json = & '$(JqPath)' -f $filterPath $appSettings
+      if ($LASTEXITCODE -ne 0) { throw "jq failed with exit code $LASTEXITCODE" }
+      [IO.File]::WriteAllText($appSettings, ($json -join "`n"), $utf8)
+      Remove-Item $filterPath
+
+      # docker/.env.prod: plain literal replacement.
+      $content = [IO.File]::ReadAllText($envFile)
+      foreach ($p in $placeholders.GetEnumerator()) { $content = $content.Replace($p.Key, $p.Value) }
+      [IO.File]::WriteAllText($envFile, $content, $utf8)
+
+      foreach ($file in $appSettings, $envFile) {
+        if (Select-String -Path $file -Pattern '__[A-Z0-9_]+__' -CaseSensitive -Quiet) { throw "Unreplaced placeholder left in $file" }
+      }
+    displayName: Replace placeholders with pipeline secrets
+    env:
+      DB_NAME: $(DbName)
+      DB_USER: $(DbUser)
+      DB_PASSWORD: $(DbPassword)
+      KUKA_ACCESS_TOKEN: $(KukaAccessToken)
+
+  - powershell: |
+      docker compose $(ComposeArgs) build
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      docker compose $(ComposeArgs) up -d
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    displayName: Docker compose build + up
+    errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
+
+  - powershell: |
+      $ProgressPreference = 'SilentlyContinue'
+      foreach ($url in 'http://localhost:8080', 'http://localhost:8080/api/health') {
+        $ok = $false
+        for ($i = 1; $i -le 30 -and -not $ok; $i++) {
+          try {
+            $ok = (Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 5).StatusCode -eq 200
+          } catch {
+            Write-Host "Attempt $i/30: $url not ready ($($_.Exception.Message))"
+            Start-Sleep -Seconds 5
+          }
+        }
+        if (-not $ok) {
+          docker compose $(ComposeArgs) logs --tail 200 api
+          throw "Smoke check failed: $url"
+        }
+        Write-Host "OK: $url"
+      }
+    displayName: Smoke check
+    errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
+
+  - powershell: |
+      docker builder prune -af
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    displayName: Prune docker build cache
+    errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
+    condition: always()
+
+  - powershell: |
+      foreach ($file in '$(AppSettingsPath)', '$(EnvFilePath)') {
+        $original = Join-Path $env:AGENT_TEMPDIRECTORY (Split-Path $file -Leaf)
+        if (Test-Path $original) { Copy-Item $original -Destination $file -Force }
+      }
+    displayName: Restore placeholders in working copy
+    condition: always()

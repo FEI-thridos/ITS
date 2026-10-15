@@ -1,0 +1,83 @@
+# CI - build, vulnerability audits and backend unit tests. Manual runs only.
+#
+# Required pipeline variables (defined on the pipeline):
+#   AgentPoolName  - name of the self-hosted agent pool (Windows agent on the Docker host)
+#   AgentName      - name of the agent in that pool
+
+trigger: none
+pr: none
+
+pool:
+  name: $(AgentPoolName)
+  demands:
+    - Agent.Name -equals $(AgentName)
+
+variables:
+  BuildConfiguration: Release
+  TestResultsDir: $(Agent.TempDirectory)\TestResults
+
+steps:
+  - checkout: self
+    clean: true
+
+  - task: UseDotNet@2
+    displayName: Install .NET SDK (backend/global.json)
+    inputs:
+      packageType: sdk
+      useGlobalJson: true
+      workingDirectory: backend
+
+  - task: UseNode@1
+    displayName: Install Node.js 24
+    inputs:
+      version: 24.x
+
+  # Backend
+  - powershell: |
+      dotnet restore KukaFm.Middleware.slnx
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      dotnet build KukaFm.Middleware.slnx --no-restore -c $(BuildConfiguration)
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    displayName: Backend - build
+    errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
+    workingDirectory: backend
+
+  - powershell: |
+      $output = dotnet list KukaFm.Middleware.slnx package --vulnerable --include-transitive
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      $output
+      if ($output -match 'has the following vulnerable packages') {
+        Write-Host '##vso[task.logissue type=error]Vulnerable NuGet packages found.'
+        exit 1
+      }
+    displayName: Backend - NuGet vulnerability check
+    errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
+    workingDirectory: backend
+
+  - powershell: |
+      dotnet test KukaFm.Middleware.slnx --no-build -c $(BuildConfiguration) --logger trx --results-directory "$(TestResultsDir)"
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    displayName: Backend - unit tests
+    errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
+    workingDirectory: backend
+
+  - task: PublishTestResults@2
+    displayName: Publish test results
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFormat: VSTest
+      testResultsFiles: '**/*.trx'
+      searchFolder: $(TestResultsDir)
+      testRunTitle: Backend unit tests
+
+  # Frontend
+  - powershell: |
+      npm ci
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      npm audit --audit-level=high
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      npm run build
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    displayName: Frontend - install, audit, build
+    errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
+    workingDirectory: frontend

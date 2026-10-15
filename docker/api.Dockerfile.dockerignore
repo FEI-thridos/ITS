@@ -1,0 +1,8 @@
+# Only the API project and its build configuration are sent to the build (tests are not needed in the image).
+*
+!backend/global.json
+!backend/nuget.config
+!backend/Directory.*.props
+!backend/src/
+**/bin/
+**/obj/

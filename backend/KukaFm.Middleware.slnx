@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KukaFm.Middleware.Api/KukaFm.Middleware.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/KukaFm.Middleware.Api.Tests/KukaFm.Middleware.Api.Tests.csproj" />
+  </Folder>
+</Solution>

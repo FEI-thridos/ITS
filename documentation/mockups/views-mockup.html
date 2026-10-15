@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KUKA FM Middleware – View Mockups</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --panel: #ffffff; --text: #1f2933; --muted: #6b7785; --border: #d9dee5;
+    --primary: #ff6a00; --primary-text: #ffffff; --hist: #f7f8fa;
+    --ok: #1e8e3e; --ok-bg: #e6f4ea; --busy: #b06000; --busy-bg: #fef3e0;
+    --off: #c5221f; --off-bg: #fce8e6; --info: #1a73e8; --info-bg: #e8f0fe; --grey-bg: #eceff1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { background: #2b2f36; color: #fff; display: flex; align-items: center; gap: 24px; padding: 0 16px; height: 52px; }
+  header .brand { font-weight: 600; white-space: nowrap; }
+  header nav { display: flex; white-space: nowrap; }
+  header nav a { color: #c9ced6; text-decoration: none; padding: 16px 4px; margin-right: 12px; border-bottom: 3px solid transparent; cursor: pointer; }
+  header nav a.active { color: #fff; border-bottom-color: var(--primary); }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .toolbar h1 { font-size: 20px; margin: 0 auto 0 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { background: #fafbfc; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; }
+  tr.hist td { background: var(--hist); color: var(--muted); font-size: 12px; }
+  tr.hist td:first-child { padding-left: 28px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .b-ok { color: var(--ok); background: var(--ok-bg); } .b-busy { color: var(--busy); background: var(--busy-bg); }
+  .b-off { color: var(--off); background: var(--off-bg); } .b-info { color: var(--info); background: var(--info-bg); }
+  .b-grey { color: var(--muted); background: var(--grey-bg); }
+  button { font: inherit; border-radius: 4px; padding: 6px 14px; cursor: pointer; border: 1px solid var(--border); background: #fff; }
+  button.primary { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
+  button.danger { color: var(--off); border-color: var(--off); padding: 3px 10px; font-size: 12px; }
+  label.check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .seg button { border-radius: 0; margin-left: -1px; } .seg button:first-child { border-radius: 4px 0 0 4px; }
+  .seg button:last-child { border-radius: 0 4px 4px 0; } .seg button.on { background: var(--info-bg); color: var(--info); border-color: var(--info); position: relative; }
+  .tick { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .dot.paused { background: var(--muted); } .dot.flash { animation: flash .4s; }
+  @keyframes flash { 0% { transform: scale(1.8); } 100% { transform: scale(1); } }
+  .battery { display: inline-block; width: 60px; height: 8px; background: var(--grey-bg); border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+  .battery i { display: block; height: 100%; border-radius: 4px; background: var(--ok); }
+  .muted { color: var(--muted); }
+  .hidden { display: none !important; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal { background: #fff; border-radius: 8px; width: 100%; max-width: 440px; padding: 20px; }
+  .modal h2 { margin: 0 0 14px; font-size: 18px; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .field input, .field select { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .field small { color: var(--muted); }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+  .toast { position: fixed; bottom: 16px; right: 16px; background: #2b2f36; color: #fff; padding: 10px 16px; border-radius: 6px; }
+  .legend { margin-top: 10px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">KUKA FM Middleware</span>
+  <nav>
+    <a data-view="missions" class="active">Missions</a>
+    <a data-view="robots">Robots</a>
+  </nav>
+</header>
+
+<main>
+  <!-- ================= MISSIONS VIEW (UC1–UC4) ================= -->
+  <section id="view-missions">
+    <div class="toolbar">
+      <h1>Missions</h1>
+      <div class="seg" id="mission-filter">
+        <button data-f="all" class="on">All</button><button data-f="active">Active</button><button data-f="final">Finished</button>
+      </div>
+      <label class="check"><input type="checkbox" id="m-hist"> Show history</label>
+      <label class="check"><input type="checkbox" id="m-poll" checked> Auto-refresh (1 s)</label>
+      <span class="tick"><span class="dot" id="m-dot"></span><span id="m-last">–</span></span>
+      <button class="primary" id="btn-dispatch">+ Dispatch mission</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>Mission code</th><th>Status</th><th>Robot</th><th>Start node</th><th>Target node</th>
+          <th>Container</th><th>Priority</th><th>Created</th><th>Updated / valid to</th><th></th>
+        </tr></thead>
+        <tbody id="m-body"></tbody>
+      </table>
+    </div>
+    <div class="legend">Active statuses: Created, Executing, Waiting, Cancelling, Warning · Final: Complete, Cancelled, Manual complete, Startup error. Grey rows = previous states (history).</div>
+  </section>
+
+  <!-- ================= ROBOTS VIEW (UC6–UC7) ================= -->
+  <section id="view-robots" class="hidden">
+    <div class="toolbar">
+      <h1>Robots</h1>
+      <label class="check"><input type="checkbox" id="r-hist"> Show history</label>
+      <label class="check"><input type="checkbox" id="r-poll" checked> Auto-refresh (1 s)</label>
+      <span class="tick"><span class="dot" id="r-dot"></span><span id="r-last">–</span></span>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>Robot code</th><th>Type</th><th>State</th><th>KUKA status</th><th>Battery</th>
+          <th>Map</th><th>Node</th><th>Mission</th><th>Updated / valid to</th>
+        </tr></thead>
+        <tbody id="r-body"></tbody>
+      </table>
+    </div>
+    <div class="legend">State is mapped in code: Idle → Available · Departure, Executing, Charging, Updating → Busy · Offline, Abnormal → Offline. Grey rows = previous states (history).</div>
+  </section>
+</main>
+
+<!-- ================= DISPATCH DIALOG (UC1) ================= -->
+<div class="modal-bg hidden" id="dlg-dispatch">
+  <form class="modal" id="form-dispatch">
+    <h2>Dispatch mission (RACK_MOVE)</h2>
+    <div class="field"><label>Robot *</label><select id="f-robot" required></select><small>Only robots stored in the database.</small></div>
+    <div class="field"><label>Start node *</label><input id="f-start" required placeholder="M001-A001-45"></div>
+    <div class="field"><label>Target node *</label><input id="f-target" required placeholder="M001-A001-40"></div>
+    <div class="field"><label>Container code *</label><input id="f-container" required placeholder="1000002"></div>
+    <div class="field"><label>Priority *</label><input id="f-priority" type="number" min="1" max="99" value="1" required><small>1 = highest, 99 = lowest</small></div>
+    <div class="actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Dispatch</button></div>
+  </form>
+</div>
+
+<!-- ================= CANCEL DIALOG (UC2) ================= -->
+<div class="modal-bg hidden" id="dlg-cancel">
+  <div class="modal">
+    <h2>Cancel mission</h2>
+    <p>Cancel mission <b id="c-code"></b>?<br><span class="muted">The mission will be force-cancelled (cancelMode = FORCE).</span></p>
+    <div class="actions"><button type="button" data-close>Back</button><button class="primary" id="c-confirm" style="background:var(--off);border-color:var(--off)">Cancel mission</button></div>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+
+<script>
+// ---------- mock data (mirrors the ERD) ----------
+const MISSION_STATUS = { 10:"Created", 20:"Executing", 25:"Waiting", 28:"Cancelling", 30:"Complete", 31:"Cancelled", 35:"Manual complete", 50:"Warning", 60:"Startup error" };
+const ACTIVE = [10, 20, 25, 28, 50];
+const ROBOT_STATUS = { 1:"Departure", 2:"Offline", 3:"Idle", 4:"Executing", 5:"Charging", 6:"Updating", 7:"Abnormal" };
+const mapState = s => s === 3 ? "Available" : [2, 7].includes(s) ? "Offline" : "Busy";
+
+const now = () => new Date();
+const ago = s => new Date(Date.now() - s * 1000);
+const pad = n => String(n).padStart(2, "0");
+const fmt = d => d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` : "–";
+
+const robots = [
+  { code:"13", type:"KMP600I", status:4, battery:78, map:"M001", node:"M001-A001-31", mission:"MW-20261014-0003", updated:ago(4), history:[
+      { status:3, battery:80, map:"M001", node:"M001-A001-26", mission:null, validTo:ago(4) },
+      { status:5, battery:62, map:"M001", node:"CHARGER-01", mission:null, validTo:ago(600) } ] },
+  { code:"14", type:"KMP600I", status:3, battery:91, map:"M001", node:"M001-A001-40", mission:null, updated:ago(120), history:[
+      { status:4, battery:93, map:"M001", node:"M001-A001-45", mission:"MW-20261014-0001", validTo:ago(120) } ] },
+  { code:"15", type:"KMP600I", status:5, battery:23, map:"M001", node:"CHARGER-02", mission:null, updated:ago(300), history:[] },
+  { code:"16", type:"KMP600I", status:2, battery:0, map:"M001", node:"M001-A001-12", mission:null, updated:ago(3600), history:[
+      { status:7, battery:4, map:"M001", node:"M001-A001-12", mission:null, validTo:ago(3600) } ] },
+];
+
+const missions = [
+  { code:"MW-20261014-0003", status:20, robot:"13", start:"M001-A001-26", target:"M001-A001-31", container:"1000003", priority:1, created:ago(40), updated:ago(4), history:[
+      { status:10, robot:"13", validTo:ago(4) } ] },
+  { code:"MW-20261014-0002", status:10, robot:"14", start:"M001-A001-40", target:"M001-A001-49", container:"1000002", priority:5, created:ago(2), updated:ago(2), history:[] },
+  { code:"MW-20261014-0001", status:30, robot:"14", start:"M001-A001-45", target:"M001-A001-40", container:"1000001", priority:1, created:ago(400), updated:ago(120), history:[
+      { status:20, robot:"14", validTo:ago(120) }, { status:10, robot:"14", validTo:ago(380) } ] },
+  { code:"MW-20261013-0007", status:31, robot:"15", start:"M001-A001-12", target:"M001-A001-49", container:"1000007", priority:3, created:ago(86400), updated:ago(86000), history:[
+      { status:28, robot:"15", validTo:ago(86000) }, { status:20, robot:"15", validTo:ago(86100) }, { status:10, robot:"15", validTo:ago(86350) } ] },
+];
+
+// ---------- rendering ----------
+const missionBadge = s => {
+  const cls = [30, 35].includes(s) ? "b-ok" : [31, 60].includes(s) ? "b-off" : s === 50 ? "b-busy" : ACTIVE.includes(s) ? "b-info" : "b-grey";
+  return `<span class="badge ${cls}">${MISSION_STATUS[s]} (${s})</span>`;
+};
+const stateBadge = s => {
+  const st = mapState(s);
+  return `<span class="badge ${st === "Available" ? "b-ok" : st === "Busy" ? "b-busy" : "b-off"}">${st}</span>`;
+};
+const battery = b => `<span class="battery"><i style="width:${b}%;background:${b < 25 ? "var(--off)" : "var(--ok)"}"></i></span>${b}%`;
+
+let filter = "all";
+function renderMissions() {
+  const showHist = document.getElementById("m-hist").checked;
+  const rows = missions
+    .filter(m => filter === "all" || (filter === "active") === ACTIVE.includes(m.status))
+    .map(m => {
+      let html = `<tr><td><b>${m.code}</b></td><td>${missionBadge(m.status)}</td><td>${m.robot}</td><td>${m.start}</td><td>${m.target}</td>
+        <td>${m.container}</td><td>${m.priority}</td><td>${fmt(m.created)}</td><td>${fmt(m.updated)}</td>
+        <td>${ACTIVE.includes(m.status) && m.status !== 28 ? `<button class="danger" data-cancel="${m.code}">Cancel</button>` : ""}</td></tr>`;
+      if (showHist) html += m.history.map(h => `<tr class="hist"><td>↳ previous state</td><td>${missionBadge(h.status)}</td><td>${h.robot}</td>
+        <td colspan="5"></td><td>${fmt(h.validTo)}</td><td></td></tr>`).join("");
+      return html;
+    }).join("");
+  document.getElementById("m-body").innerHTML = rows || `<tr><td colspan="10" class="muted">No missions.</td></tr>`;
+}
+
+function renderRobots() {
+  const showHist = document.getElementById("r-hist").checked;
+  document.getElementById("r-body").innerHTML = robots.map(r => {
+    let html = `<tr><td><b>${r.code}</b></td><td>${r.type}</td><td>${stateBadge(r.status)}</td><td>${ROBOT_STATUS[r.status]} (${r.status})</td>
+      <td>${battery(r.battery)}</td><td>${r.map}</td><td>${r.node}</td><td>${r.mission ?? "–"}</td><td>${fmt(r.updated)}</td></tr>`;
+    if (showHist) html += r.history.map(h => `<tr class="hist"><td>↳ previous state</td><td></td><td>${stateBadge(h.status)}</td>
+      <td>${ROBOT_STATUS[h.status]} (${h.status})</td><td>${battery(h.battery)}</td><td>${h.map}</td><td>${h.node}</td>
+      <td>${h.mission ?? "–"}</td><td>${fmt(h.validTo)}</td></tr>`).join("");
+    return html;
+  }).join("");
+}
+
+// ---------- simulated backend sync (stands in for UC5 / UC8) ----------
+function changeMission(m, status) {
+  m.history.unshift({ status: m.status, robot: m.robot, validTo: now() });
+  m.status = status; m.updated = now();
+}
+function changeRobot(r, patch) {
+  r.history.unshift({ status: r.status, battery: r.battery, map: r.map, node: r.node, mission: r.mission, validTo: now() });
+  Object.assign(r, patch, { updated: now() });
+}
+let t = 0;
+function simulate() {
+  t++;
+  missions.forEach(m => {
+    if (m.status === 28) changeMission(m, 31);
+    else if (m.status === 10 && Date.now() - m.updated > 5000) changeMission(m, 20);
+    else if (m.status === 20 && Date.now() - m.updated > 12000) changeMission(m, 30);
+  });
+  if (t % 5 === 0) { const r = robots[0]; changeRobot(r, { battery: Math.max(5, r.battery - 1) }); }
+  if (t % 7 === 0) { const r = robots[2]; changeRobot(r, { battery: Math.min(100, r.battery + 2) }); }
+}
+
+// ---------- polling ticks (1 s) ----------
+function tick(prefix, render) {
+  const poll = document.getElementById(prefix + "-poll").checked;
+  const dot = document.getElementById(prefix + "-dot");
+  dot.classList.toggle("paused", !poll);
+  if (!poll) return;
+  render();
+  document.getElementById(prefix + "-last").textContent = "Last refresh " + fmt(now());
+  dot.classList.remove("flash"); void dot.offsetWidth; dot.classList.add("flash");
+}
+setInterval(() => {
+  simulate();
+  tick("m", renderMissions);
+  tick("r", renderRobots);
+}, 1000);
+
+// ---------- UI wiring ----------
+document.querySelectorAll("header nav a").forEach(a => a.onclick = () => {
+  document.querySelectorAll("header nav a").forEach(x => x.classList.toggle("active", x === a));
+  document.getElementById("view-missions").classList.toggle("hidden", a.dataset.view !== "missions");
+  document.getElementById("view-robots").classList.toggle("hidden", a.dataset.view !== "robots");
+});
+document.querySelectorAll("#mission-filter button").forEach(b => b.onclick = () => {
+  filter = b.dataset.f;
+  document.querySelectorAll("#mission-filter button").forEach(x => x.classList.toggle("on", x === b));
+  renderMissions();
+});
+document.getElementById("m-hist").onchange = renderMissions;
+document.getElementById("r-hist").onchange = renderRobots;
+
+const toast = msg => { const el = document.getElementById("toast"); el.textContent = msg; el.classList.remove("hidden"); setTimeout(() => el.classList.add("hidden"), 2500); };
+const open = id => document.getElementById(id).classList.remove("hidden");
+const close = el => el.closest(".modal-bg").classList.add("hidden");
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => close(b));
+
+document.getElementById("btn-dispatch").onclick = () => {
+  document.getElementById("f-robot").innerHTML = `<option value="">– select robot –</option>` +
+    robots.map(r => `<option value="${r.code}">${r.code} · ${r.type} · ${mapState(r.status)}</option>`).join("");
+  open("dlg-dispatch");
+};
+let seq = 4;
+document.getElementById("form-dispatch").onsubmit = e => {
+  e.preventDefault();
+  const code = `MW-20261014-${String(seq++).padStart(4, "0")}`;
+  missions.unshift({ code, status:10, robot:document.getElementById("f-robot").value,
+    start:document.getElementById("f-start").value, target:document.getElementById("f-target").value,
+    container:document.getElementById("f-container").value, priority:+document.getElementById("f-priority").value,
+    created:now(), updated:now(), history:[] });
+  close(e.target); e.target.reset(); renderMissions();
+  toast(`Mission ${code} dispatched`);
+};
+
+let toCancel = null;
+document.getElementById("m-body").onclick = e => {
+  const code = e.target.dataset.cancel;
+  if (!code) return;
+  toCancel = code;
+  document.getElementById("c-code").textContent = code;
+  open("dlg-cancel");
+};
+document.getElementById("c-confirm").onclick = e => {
+  const m = missions.find(x => x.code === toCancel);
+  changeMission(m, 28);
+  close(e.target); renderMissions();
+  toast(`Cancel request sent for ${toCancel}`);
+};
+
+renderMissions(); renderRobots();
+</script>
+</body>
+</html>
