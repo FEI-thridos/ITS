@@ -7,6 +7,8 @@ public class RobotStatusHistory
 {
     public long Id { get; set; }
     public long RobotId { get; set; }
+    public required string RobotCode { get; set; }
+    public string? RobotType { get; set; }
     public short Status { get; set; }
     public string? StatusName { get; set; }
     public decimal? BatteryLevel { get; set; }
@@ -23,6 +25,8 @@ public class RobotStatusHistoryConfiguration : IEntityTypeConfiguration<RobotSta
     {
         builder.ToTable("robot_status_history");
         builder.HasOne<Robot>().WithMany().HasForeignKey(h => h.RobotId).OnDelete(DeleteBehavior.Restrict);
+        builder.Property(h => h.RobotCode).HasMaxLength(32);
+        builder.Property(h => h.RobotType).HasMaxLength(32);
         builder.Property(h => h.StatusName).HasMaxLength(32);
         builder.Property(h => h.BatteryLevel).HasPrecision(5, 2);
         builder.Property(h => h.MapCode).HasMaxLength(32);

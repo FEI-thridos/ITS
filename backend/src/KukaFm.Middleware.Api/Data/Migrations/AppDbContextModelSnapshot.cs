@@ -122,13 +122,55 @@ namespace KukaFm.Middleware.Api.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("ContainerCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("container_code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("MissionCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("mission_code");
+
                     b.Property<long>("MissionId")
                         .HasColumnType("bigint")
                         .HasColumnName("mission_id");
 
+                    b.Property<string>("MissionType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("mission_type");
+
+                    b.Property<short>("Priority")
+                        .HasColumnType("smallint")
+                        .HasColumnName("priority");
+
+                    b.Property<string>("RequestId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("request_id");
+
                     b.Property<long>("RobotId")
                         .HasColumnType("bigint")
                         .HasColumnName("robot_id");
+
+                    b.Property<string>("StartNode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("start_node");
 
                     b.Property<short>("Status")
                         .HasColumnType("smallint")
@@ -138,6 +180,12 @@ namespace KukaFm.Middleware.Api.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("status_name");
+
+                    b.Property<string>("TargetNode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("target_node");
 
                     b.Property<DateTimeOffset>("ValidFrom")
                         .HasColumnType("timestamp with time zone")
@@ -251,9 +299,20 @@ namespace KukaFm.Middleware.Api.Data.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("node_code");
 
+                    b.Property<string>("RobotCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("robot_code");
+
                     b.Property<long>("RobotId")
                         .HasColumnType("bigint")
                         .HasColumnName("robot_id");
+
+                    b.Property<string>("RobotType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("robot_type");
 
                     b.Property<short>("Status")
                         .HasColumnType("smallint")

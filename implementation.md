@@ -8,12 +8,13 @@ Recap of the work done so far and the planned next phases.
 | 2 | Backlog | ✅ Done |
 | 3 | System design, CLAUDE.md, agents | ✅ Done |
 | 4 | Backbone (scaffolding) with agents | ✅ Done |
-| 5 | Feature: Robot management | ⏳ Planned |
+| 5 | Feature: Robot management | ✅ Done |
 | 6 | Feature: Mission management | ⏳ Planned |
 | 7 | Testing and hardening | ⏳ Planned |
 | 8 | Deployment via CI/CD | ⏳ Planned |
 
 Workflow used from phase 4 on: **planner → user approves → expert agents implement → reviewer → user reviews.**
+From phase 5 on the planner maps every step to backlog **acceptance criteria**, and the reviewer validates them and routes findings to the owning agent.
 
 ---
 
@@ -48,16 +49,11 @@ Workflow used from phase 4 on: **planner → user approves → expert agents imp
 - Stories = use cases (UC1–UC8) + Containerize / CI / CD.
 - Tasks per use case: backend endpoint, DB, KUKA FM call, frontend, unit tests.
 
-**Columns:** Order No, Work Item Type, Title, Description, Activity (Backend / Frontend / Testing / Deployment), Estimated Hours.
+**Columns:** Order No, Work Item Type, Title, Description, Acceptance Criteria (Features + User Stories), Activity (Backend / Frontend / Testing / Deployment), Estimated Hours.
 
 **Outputs** (`backlog/`)
 - `backlog.csv` – import-ready.
 - `backlog.xlsx` – formatted, roll-up formulas, Summary sheet (164 h total).
-
-**Later adjustments**
-- Unit tests only (no integration/E2E, no frontend tests).
-- `cd.yml` manual run only.
-- Task 1.3.3.4 changed to backend task "Apply DB migrations on API startup".
 
 ---
 
@@ -83,9 +79,6 @@ Workflow used from phase 4 on: **planner → user approves → expert agents imp
 | `frontend-expert` | `frontend/` | Yes |
 | `ops-infra-expert` | `docker/`, `ci-cd/` | Yes |
 | `reviewer` | Reviews each step, runs builds/tests | No |
-
-**Quality pass**
-- `/code-review` of agent specs → 9 findings, 8 fixed (duplicated rules removed, migration ownership, Seq ports, dev credentials).
 
 ---
 
@@ -125,28 +118,55 @@ Workflow used from phase 4 on: **planner → user approves → expert agents imp
 - `dotnet build` 0 warnings · `dotnet test` exit 0 · `ng build` · `npm audit` 0 vulnerabilities.
 - Dev stack up: `:8080` 200, `/api/health` 200, Seq UI, 4 tables migrated.
 
-**Open**
-- Pool variable `$(AgentPoolName)` resolution – check on first pipeline run.
-- Unused Docker volumes from earlier runs – remove manually if wanted.
-
 ---
 
-## Phase 5 – Feature: Robot management ⏳
+## Phase 5 – Feature: Robot management ✅
 
 **Goal:** robots synced from KUKA FM and visible in UI with history (UC6–UC8).
 
-**Backend**
-- KUKA client: typed HttpClient, token header, envelope + error handling, `robotQuery`.
-- Options classes (`KukaFm`, `Sync`).
-- Robot sync background service (runs first on startup), insert / change detection / history.
-- Status mapping Available / Busy / Offline.
-- `GET /api/robots`, `GET /api/robots/{id}/history`.
-- Unit tests: status mapping 1–7, new / unchanged / changed robot, KUKA failures.
+**Preparation**
+- Planner re-run with acceptance-criteria mapping; 12 open questions decided by the user.
+- KUKA FM reachability tested from a container: DNS via hosts file works; TLS needs the self-signed cert.
+- Self-signed PFX (with private key) deleted; only the public `docker/certs/kukafm.crt` kept; `*.pfx`, `*.key`, `~$*` gitignored.
+- ERD, spec and `documentation/specification.md` updated: history tables mirror **every** parent column.
 
-**Frontend**
-- API service + models, Robots view (state badge, battery bar), Show history, Auto-refresh 1 s.
+**Key decisions**
+- `robotQuery` always `{}` (no filters); only status codes 1–7, no fallback – invalid data fails the whole tick.
+- Robots missing from the response stay unchanged; DB errors handled like KUKA errors.
+- Robot history DTO includes mapped `state`; newest first, max 50 rows.
+- Mission sync (phase 6) waits for the first successful robot sync with ≥ 1 robot – failures cascade by design.
+- Failed KUKA calls logged twice on purpose (client Warning + sync Error).
+- Same real KUKA FM (`appsettings`) for development and production.
 
-**Backlog:** 1.2.1.x, 1.2.2.x, 1.2.3.x
+**Backend** (`backend-expert`)
+- Migration `MirrorHistoryColumns` (both history tables mirror all parent columns).
+- Options `KukaFm`, `Sync.RobotIntervalSeconds`; typed KUKA client (`robotQuery`), one error type, token never logged.
+- Status mapping 1–7 → name + Available/Busy/Offline.
+- Robot repository, robot sync service + worker (first tick at startup, then interval).
+- `GET /api/robots`, `GET /api/robots/{id}/history`; ProblemDetails for all errors (`UseStatusCodePages`).
+- 57 unit tests (client errors, mapping, every sync case, service/404).
+
+**Frontend** (`frontend-expert`)
+- `core/` models, robots API, ProblemDetails message helper; `shared/` state badge, battery bar.
+- Robots view per mockup: Show history (grey rows, valid from – valid to), Auto-refresh 1 s (`exhaustMap`), error banner.
+
+**Ops** (`ops-infra-expert`)
+- API image trusts `docker/certs/kukafm.crt` (`update-ca-certificates`), still runs as non-root.
+
+**Review** (`reviewer`)
+- Acceptance criteria 1.2, 1.2.1–1.2.3: all met (1.2.3.1 mission-sync signal → phase 6).
+- 3 minor findings (ProblemDetails for invalid routes, unused CSS / fallback / field) → fixed; re-check **approve**.
+
+**Verified**
+- `dotnet build` 0 warnings · 57/57 tests · no vulnerable packages · `ng build` · `npm audit` 0.
+- Dev stack: `/api/robots` 200 `[]`, unknown history 404 ProblemDetails, migrations applied, sync logs KUKA `TIMEOUT`, no token in logs.
+
+**Open**
+- KUKA FM down → live sync not verified (moved to phase 8 checks).
+- Docker build failed twice before succeeding (BuildKit / `npm ci`), no file changes – watch in CD.
+- Header alignment with mockup → phase 6.
+
+**Backlog:** 1.2.1.1–1.2.1.4, 1.2.2.1–1.2.2.4, 1.2.3.1 (except mission-sync signal), 1.2.3.2–1.2.3.4
 
 ---
 
@@ -156,7 +176,8 @@ Workflow used from phase 4 on: **planner → user approves → expert agents imp
 
 **Backend**
 - `submitMission`, `missionCancel`, `jobQuery` (+ per-jobCode fallback).
-- Mission sync (starts after first robot sync), history, `completed_at` on final status.
+- Mission sync – starts only after the first successful robot sync with ≥ 1 robot (signal from 1.2.3.1), history mirrors all columns, `completed_at` on final status.
+- `IRobotRepository.GetAsync` for dispatch validation.
 - Generated `missionCode` / `requestId` (≤ 32 chars, unique).
 - `GET /api/missions`, `GET /api/missions/{code}/history`, `POST /api/missions`, `POST /api/missions/{code}/cancel`.
 - Unit tests: validation boundaries, cancel 404/409, sync transitions, KUKA errors.
@@ -164,7 +185,8 @@ Workflow used from phase 4 on: **planner → user approves → expert agents imp
 **Frontend**
 - Missions view, All/Active/Finished filter, Show history, Auto-refresh 1 s.
 - Dispatch dialog (robot select, nodes, container, priority 1–99), Cancel with FORCE confirmation.
-- ProblemDetails error messages.
+- ProblemDetails error messages (reuse `core/` helper).
+- Align app header with the mockup (deferred from phase 5).
 
 **Backlog:** 1.1.1.x – 1.1.5.x
 
@@ -186,12 +208,16 @@ Workflow used from phase 4 on: **planner → user approves → expert agents imp
 - Git repository in Azure DevOps (user).
 - Pipelines created from `ci-cd/ci.yml` and `ci-cd/cd.yml`.
 - Pipeline variables: `AgentPoolName`, `AgentName`, `DbName`, `DbUser`, `DbPassword` (secret), `KukaAccessToken` (secret).
-- Hosts entry for `kukafm.its.fei` on the agent host.
+- Hosts entry for `kukafm.its.fei` on the agent host (`147.175.126.137`).
+- KUKA FM reachable (was down during phase 5).
 
 **Steps**
 1. Run CI manually → green build, vuln check, audit, test results published.
 2. Verify `$(AgentPoolName)` resolves; adjust if not.
 3. Run CD manually → placeholders replaced, stack built and started, smoke check green.
 4. Verify production: UI on `:8080`, `/api/health`, Seq logs, robots synced from real KUKA FM.
+   - TLS handshake with the trusted self-signed cert succeeds.
+   - KUKA field types match (`status`, `batteryLevel` numeric; `robotId`, `code` strings).
+   - `/api/robots/abc/history` returns ProblemDetails.
 5. Import backlog (`backlog.csv`) into Azure Boards; close completed items.
 6. Document the final solution in the Wiki (acceptance criterion).

@@ -17,3 +17,8 @@ dist/
 .idea/
 Thumbs.db
 .DS_Store
+# Certificates with private keys / Office lock files
+*.pfx
+*.p12
+*.key
+~$*

@@ -247,13 +247,17 @@ Source: [erd.drawio](erd.drawio)
 | Entity | Purpose |
 |---|---|
 | `robot` | Current state of each robot from `robotQuery` (`robot_code` = KUKA `robotId`). |
-| `robot_status_history` | Previous states of a robot, one row per change (`valid_from` → `valid_to`). |
+| `robot_status_history` | Previous states of a robot – mirrors every `robot` column, one row per change (`valid_from` → `valid_to`). |
 | `mission` | Missions dispatched by the middleware; current status from `jobQuery`. |
-| `mission_status_history` | Previous states of a mission, one row per change. |
+| `mission_status_history` | Previous states of a mission – mirrors every `mission` column, one row per change. |
 
-**Relations:** 1 robot → 0..* missions (each mission has exactly 1 robot, `robot_id` NOT NULL) · 1 robot → 0..* robot history rows · 1 mission → 0..* mission history rows · 1 robot → 0..* mission history rows.
+**Relations:** 1 robot → 0..* missions (each mission has exactly 1 robot, `robot_id` NOT NULL) · 1 robot → 0..* robot history rows · 1 mission → 0..* mission history rows · 1 robot → 0..* mission history rows. All FKs `ON DELETE RESTRICT`.
 
-**Rules:** every change stores the previous state in the history table · Available / Busy / Offline is mapped from `robot.status` in code (Idle → Available; Departure, Executing, Charging, Updating → Busy; Offline, Abnormal → Offline).
+**Rules:**
+- History tables mirror every column of their parent table (except `id`; `updated_at` becomes `valid_from`); unique keys are not copied.
+- Every change stores the previous state in the history table.
+- Columns are NOT NULL unless marked NULL (nullable: values KUKA may not return, `robot.mission_code`, `mission.completed_at`).
+- Available / Busy / Offline is mapped from `robot.status` in code (Idle → Available; Departure, Executing, Charging, Updating → Busy; Offline, Abnormal → Offline).
 
 ## 6. Návrh view aplikácie
 

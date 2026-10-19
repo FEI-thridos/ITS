@@ -90,7 +90,8 @@ Folder ownership and agent routing: see `CLAUDE.md`.
 
 ## 4. KUKA FM integration
 
-- **Base URL:** `https://kukafm.its.fei` (trusted certificate on host; routed via hosts file).
+- **Base URL:** `https://kukafm.its.fei` (from `appsettings`; same real KUKA FM for development and production). Host name resolved via the host's hosts file (works inside Docker Desktop containers).
+- **TLS:** KUKA FM uses a **self-signed** certificate (`CN=its.fei`, SAN `*.its.fei`). Its public part `docker/certs/kukafm.crt` is added to the API image trust store. Never commit private keys (`*.pfx`, `*.key`).
 - **All endpoints:** `POST {BaseUrl}/interfaces/api/amr/{apiName}`
 - **Headers:** `Content-Type: application/json`, `Authorization: {accessToken}` (raw token value from config, as in KUKA docs).
 - **Never log the token.**
@@ -158,7 +159,8 @@ Node `type`, `actionType`, `passStrategy`, `waitingMillis` are config defaults.
 | 60 | Startup error | final |
 
 ### 4.4 `robotQuery` (UC8)
-- Request `{}` (all robots; optional filters from config).
+- Request `{}` – always all robots, **no filters**.
+- Only status codes 1–7 are sent by KUKA. `batteryLevel` is a percentage 0–100. Values always fit the column lengths in §6.
 - Response `data[]`: `robotId` (= our `robot_code`), `robotType`, `mapCode`, `floorNumber`, `buildingCode`, `containerCode`, `status`, `occupyStatus`, `batteryLevel`, `nodeCode`, `x`, `y`, `robotOrientation`, `missionCode`, …
 
 **Robot status codes and mapped state** (mapping is done **in code**, not stored)
@@ -177,7 +179,7 @@ Node `type`, `actionType`, `passStrategy`, `waitingMillis` are config defaults.
 ## 5. Business rules
 
 ### Startup and sync order
-1. On startup **robot sync runs first**. Mission sync starts only after the first robot sync finished.
+1. On startup **robot sync runs first**. Mission sync starts only after the first robot sync that **succeeds and returns at least one robot** (until then mission sync waits; robot sync keeps retrying on its interval).
 2. Both syncs then run on their own interval from config.
 3. A KUKA error in a sync is logged; nothing is written; retry on next tick.
 
@@ -200,7 +202,11 @@ Node `type`, `actionType`, `passStrategy`, `waitingMillis` are config defaults.
 ### UC8 – Robot sync
 - One `robotQuery` → for each robot:
   - unknown `robot_code` → insert,
-  - **any** changed column → insert previous state into `robot_status_history`, then update.
+  - **any** changed column (incl. `robot_type`) → insert previous state into `robot_status_history`, then update,
+  - robots missing from the response → left unchanged (no history),
+  - DB error during a tick → handled like a KUKA error (logged, nothing written, retry next tick).
+  - invalid data from KUKA (e.g. status code outside 1–7) → **no fallback**: the whole tick fails (logged, nothing written). Until a robot sync succeeds, mission sync never starts – failures cascade by design.
+  - a failed KUKA call is logged twice on purpose: Warning by the KUKA client, Error by the sync.
 
 ### History rule
 **Every change** of a mission or robot creates one history row holding the **previous** state.
@@ -238,7 +244,7 @@ Source: `documentation/erd.drawio`. All ids `bigint` identity. Timestamps `times
 |---|---|---|
 | id | bigint | PK |
 | robot_id | bigint NOT NULL | FK → robot.id |
-| status, status_name, battery_level, map_code, node_code, mission_code | as in `robot` (same nullability) | previous values |
+| robot_code, robot_type, status, status_name, battery_level, map_code, node_code, mission_code | as in `robot` (same types and nullability, no UK) | previous values – **mirrors every `robot` column** except `id`, `updated_at` |
 | valid_from | timestamptz | |
 | valid_to | timestamptz | |
 
@@ -266,10 +272,11 @@ Source: `documentation/erd.drawio`. All ids `bigint` identity. Timestamps `times
 | id | bigint | PK |
 | mission_id | bigint NOT NULL | FK → mission.id |
 | robot_id | bigint NOT NULL | FK → robot.id |
-| status | smallint | |
-| status_name | varchar(32) NULL | |
+| mission_code, request_id, mission_type, start_node, target_node, container_code, priority, status, status_name, created_at, completed_at | as in `mission` (same types and nullability, no UK) | previous values – **mirrors every `mission` column** except `id`, `updated_at` |
 | valid_from | timestamptz | |
 | valid_to | timestamptz | |
+
+**History rule for the schema:** a history table always mirrors every column of its parent table (except `id`; `updated_at` becomes `valid_from`). Adding a column to `robot`/`mission` requires adding it to its history table too.
 
 Relations: robot 1–0..* mission · robot 1–0..* robot_status_history · robot 1–0..* mission_status_history · mission 1–0..* mission_status_history.
 
@@ -296,7 +303,8 @@ Dispatch body:
 
 Mission DTO: `id, missionCode, missionType, startNode, targetNode, containerCode, priority, robotId, robotCode, status, statusName, isActive, createdAt, updatedAt, completedAt`.
 Robot DTO: `id, robotCode, robotType, status, statusName, state (Available|Busy|Offline), batteryLevel, mapCode, nodeCode, missionCode, updatedAt`.
-History DTOs: the stored previous-state columns + `validFrom`, `validTo`.
+Robot history DTO: `robotCode, robotType, status, statusName, state, batteryLevel, mapCode, nodeCode, missionCode, validFrom, validTo` – newest first, **max 50 rows** per robot.
+Mission history DTO: all mirrored columns (+ `robotCode`) + `validFrom`, `validTo` (defined in phase 6).
 
 ---
 
@@ -305,7 +313,7 @@ History DTOs: the stored previous-state columns + `validFrom`, `validTo`.
 Source mockup: `documentation/mockups/views-mockup.html` (+ screenshots in `documentation/images/`). Follow it.
 
 - **Missions view**: table (code, status badge with code, robot, start/target node, container, priority, created, updated); filter All / Active / Finished; *Show history* checkbox adds grey previous-state rows; *Auto-refresh (1 s)* checkbox + last refresh time; `+ Dispatch mission` dialog (robot select from `GET /api/robots`, required; start node, target node, container code, priority 1–99); *Cancel* button only on active missions with confirmation dialog mentioning FORCE.
-- **Robots view**: table (code, type, mapped state badge, KUKA status with code, battery bar, map, node, mission, updated); *Show history*; *Auto-refresh (1 s)*.
+- **Robots view**: table (code, type, mapped state badge, KUKA status with code, battery bar, map, node, mission, updated); *Show history* (histories fetched only while checked; history rows show `valid from – valid to`); *Auto-refresh (1 s)*.
 - Polling: frontend polls every **1 s** (no SignalR/WebSockets).
 - API calls via relative `/api/...` (nginx proxy). Language: English.
 
@@ -332,8 +340,7 @@ Source mockup: `documentation/mockups/views-mockup.html` (+ screenshots in `docu
       "ContainerModelCode": "", "LockRobotAfterFinish": false, "IdleNode": "",
       "NodeType": "NODE_POINT", "PassStrategy": "AUTO", "WaitingMillis": 0
     },
-    "JobQuery": { "Limit": 100, "SourceValue": null, "CreateUsername": null, "Maps": [] },
-    "RobotQuery": { "RobotType": null, "MapCode": null, "FloorNumber": null }
+    "JobQuery": { "Limit": 100, "SourceValue": null, "CreateUsername": null, "Maps": [] }
   },
   "Sync": { "RobotIntervalSeconds": 5, "MissionIntervalSeconds": 5 },
   "Serilog": {

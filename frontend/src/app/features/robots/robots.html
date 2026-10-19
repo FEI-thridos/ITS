@@ -1,0 +1,82 @@
+<div class="toolbar">
+  <h1>Robots</h1>
+  <label class="check">
+    <input #history type="checkbox" [checked]="showHistory()" (change)="setShowHistory(history.checked)" />
+    Show history
+  </label>
+  <label class="check">
+    <input #refresh type="checkbox" [checked]="autoRefresh()" (change)="autoRefresh.set(refresh.checked)" />
+    Auto-refresh (1 s)
+  </label>
+  <span class="tick">
+    <!-- Re-created on every refresh so the flash animation replays. -->
+    @for (refreshed of [lastRefresh()]; track refreshed) {
+      <span class="dot" [class.paused]="!autoRefresh()"></span>
+    }
+    @if (lastRefresh(); as refreshed) {
+      Last refresh {{ refreshed | date: 'yyyy-MM-dd HH:mm:ss' }}
+    } @else {
+      –
+    }
+  </span>
+</div>
+
+@if (error(); as message) {
+  <div class="error" role="alert">{{ message }}</div>
+}
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Robot code</th>
+        <th>Type</th>
+        <th>State</th>
+        <th>KUKA status</th>
+        <th>Battery</th>
+        <th>Map</th>
+        <th>Node</th>
+        <th>Mission</th>
+        <th>Updated / valid to</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (robot of robots(); track robot.id) {
+        <tr>
+          <td><b>{{ robot.robotCode }}</b></td>
+          <td>{{ robot.robotType ?? '–' }}</td>
+          <td><app-state-badge [state]="robot.state" /></td>
+          <td>{{ robot.statusName ?? '–' }} ({{ robot.status }})</td>
+          <td><app-battery-bar [level]="robot.batteryLevel" /></td>
+          <td>{{ robot.mapCode ?? '–' }}</td>
+          <td>{{ robot.nodeCode ?? '–' }}</td>
+          <td>{{ robot.missionCode ?? '–' }}</td>
+          <td>{{ robot.updatedAt | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
+        </tr>
+        @if (showHistory()) {
+          @for (entry of histories()?.get(robot.id) ?? []; track $index) {
+            <tr class="hist">
+              <td>↳ previous state</td>
+              <td>{{ entry.robotType ?? '–' }}</td>
+              <td><app-state-badge [state]="entry.state" /></td>
+              <td>{{ entry.statusName ?? '–' }} ({{ entry.status }})</td>
+              <td><app-battery-bar [level]="entry.batteryLevel" /></td>
+              <td>{{ entry.mapCode ?? '–' }}</td>
+              <td>{{ entry.nodeCode ?? '–' }}</td>
+              <td>{{ entry.missionCode ?? '–' }}</td>
+              <td>{{ entry.validFrom | date: 'yyyy-MM-dd HH:mm:ss' }} – {{ entry.validTo | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
+            </tr>
+          }
+        }
+      } @empty {
+        <tr>
+          <td colspan="9" class="muted">No robots.</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+<div class="legend">
+  State is mapped from the KUKA status: Idle → Available · Departure, Executing, Charging, Updating → Busy · Offline,
+  Abnormal → Offline. Grey rows = previous states (history).
+</div>
