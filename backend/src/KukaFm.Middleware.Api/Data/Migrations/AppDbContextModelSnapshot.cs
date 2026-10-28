@@ -35,12 +35,6 @@ namespace KukaFm.Middleware.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
 
-                    b.Property<string>("ContainerCode")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("container_code");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -56,10 +50,6 @@ namespace KukaFm.Middleware.Api.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("mission_type");
-
-                    b.Property<short>("Priority")
-                        .HasColumnType("smallint")
-                        .HasColumnName("priority");
 
                     b.Property<string>("RequestId")
                         .IsRequired()
@@ -126,12 +116,6 @@ namespace KukaFm.Middleware.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
 
-                    b.Property<string>("ContainerCode")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("container_code");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -151,10 +135,6 @@ namespace KukaFm.Middleware.Api.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("mission_type");
-
-                    b.Property<short>("Priority")
-                        .HasColumnType("smallint")
-                        .HasColumnName("priority");
 
                     b.Property<string>("RequestId")
                         .IsRequired()
@@ -361,12 +341,14 @@ namespace KukaFm.Middleware.Api.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_mission_status_history_mission_mission_id");
 
-                    b.HasOne("KukaFm.Middleware.Api.Data.Robot", null)
+                    b.HasOne("KukaFm.Middleware.Api.Data.Robot", "Robot")
                         .WithMany()
                         .HasForeignKey("RobotId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_mission_status_history_robots_robot_id");
+
+                    b.Navigation("Robot");
                 });
 
             modelBuilder.Entity("KukaFm.Middleware.Api.Data.RobotStatusHistory", b =>

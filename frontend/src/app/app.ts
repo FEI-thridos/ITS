@@ -6,7 +6,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     <header>
-      <span class="title">KUKA FM Middleware</span>
+      <span class="brand">KUKA FM Middleware</span>
       <nav>
         <a routerLink="/missions" routerLinkActive="active">Missions</a>
         <a routerLink="/robots" routerLinkActive="active">Robots</a>
@@ -21,28 +21,34 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
       display: flex;
       align-items: center;
       gap: 24px;
-      padding: 12px 24px;
-      background: #1f2937;
+      height: 52px;
+      padding: 0 16px;
       color: #fff;
+      background: #2b2f36;
     }
-    .title {
+    .brand {
       font-weight: 600;
-      font-size: 16px;
+      white-space: nowrap;
     }
     nav {
       display: flex;
-      gap: 16px;
+      white-space: nowrap;
     }
     nav a {
-      color: #d1d5db;
+      margin-right: 12px;
+      padding: 16px 4px;
+      border-bottom: 3px solid transparent;
+      color: #c9ced6;
       text-decoration: none;
     }
     nav a.active {
       color: #fff;
-      font-weight: 600;
+      border-bottom-color: var(--primary);
     }
     main {
-      padding: 24px;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 16px;
     }
   `,
 })

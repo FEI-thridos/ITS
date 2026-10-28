@@ -10,3 +10,6 @@ public record KukaRobot(
     string? MapCode,
     string? NodeCode,
     string? MissionCode);
+
+/// <summary>One jobQuery result row; only the fields the mission sync uses.</summary>
+public record KukaJob(string JobCode, int Status, string? RobotId);

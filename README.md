@@ -78,7 +78,7 @@ Build, test and run commands are listed in [CLAUDE.md → Commands](CLAUDE.md#co
 | 2 | Backlog | Azure Boards structure (Epic → Features → User Stories → Tasks) with acceptance criteria and estimates. |
 | 3 | System design, CLAUDE.md, agents | Binding spec, working rules, architecture and the five Claude Code agents. |
 | 4 | Backbone (scaffolding) | Solution, Angular app, Docker stack and CI/CD pipelines built and reviewed by the agents. |
-| 5 | Feature: Robot management | KUKA client, robot sync with history, robots API and view. |
-| 6 | Feature: Mission management | Dispatch, cancel, mission sync and missions view *(planned)*. |
+| 5 | Feature: Robot management | KUKA client, robot sync with history, robots API and view (history embedded + paginated). |
+| 6 | Feature: Mission management | Dispatch, cancel (readiness gate, field validation), mission sync with history and the missions view. |
 | 7 | Testing and hardening | Edge-case coverage, end-to-end run, logging and full review *(planned)*. |
 | 8 | Deployment via CI/CD | First CI/CD runs, production checks against the real KUKA FM, Wiki *(planned)*. |

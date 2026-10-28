@@ -1,0 +1,109 @@
+<div class="toolbar">
+  <h1>Missions</h1>
+  <div class="seg">
+    @for (option of filters; track option.value) {
+      <button type="button" [class.on]="filter() === option.value" (click)="filter.set(option.value)">{{ option.label }}</button>
+    }
+  </div>
+  <label class="check">
+    <input #history type="checkbox" [checked]="showHistory()" (change)="setShowHistory(history.checked)" />
+    Show history
+  </label>
+  <label class="check">
+    <input #refresh type="checkbox" [checked]="autoRefresh()" (change)="autoRefresh.set(refresh.checked)" />
+    Auto-refresh (1 s)
+  </label>
+  <span class="tick">
+    <!-- Re-created on every refresh so the flash animation replays. -->
+    @for (refreshed of [lastRefresh()]; track refreshed) {
+      <span class="dot" [class.paused]="!autoRefresh()"></span>
+    }
+    @if (lastRefresh(); as refreshed) {
+      Last refresh {{ refreshed | date: 'yyyy-MM-dd HH:mm:ss' }}
+    } @else {
+      –
+    }
+  </span>
+  <button type="button" class="primary" (click)="dispatchOpen.set(true)">+ Dispatch mission</button>
+</div>
+
+@if (error(); as message) {
+  <div class="error" role="alert">{{ message }}</div>
+}
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Mission code</th>
+        <th>Status</th>
+        <th>Robot</th>
+        <th>Start node</th>
+        <th>Target node</th>
+        <th>Created</th>
+        <th>Updated / valid to</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (mission of missions(); track mission.id) {
+        <tr>
+          <td><b>{{ mission.missionCode }}</b></td>
+          <td><app-mission-status-badge [status]="mission.status" [statusName]="mission.statusName" /></td>
+          <td>{{ mission.robotCode }}</td>
+          <td>{{ mission.startNode }}</td>
+          <td>{{ mission.targetNode }}</td>
+          <td>{{ mission.createdAt | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
+          <td>{{ mission.updatedAt | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
+          <td>
+            @if (isCancelable(mission)) {
+              <button type="button" class="danger" (click)="cancelCode.set(mission.missionCode)">Cancel</button>
+            }
+          </td>
+        </tr>
+        @if (showHistory()) {
+          @let newest = mission.history ?? [];
+          @for (entry of olderHistory.rows(mission.missionCode, newest); track $index) {
+            <tr class="hist">
+              <td>↳ previous state</td>
+              <td><app-mission-status-badge [status]="entry.status" [statusName]="entry.statusName" /></td>
+              <td>{{ entry.robotCode }}</td>
+              <td>{{ entry.startNode }}</td>
+              <td>{{ entry.targetNode }}</td>
+              <td>{{ entry.createdAt | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
+              <td>{{ entry.validFrom | date: 'yyyy-MM-dd HH:mm:ss' }} – {{ entry.validTo | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
+              <td></td>
+            </tr>
+          }
+          @if (olderHistory.hasMore(mission.missionCode, newest)) {
+            <tr class="hist">
+              <td colspan="8">
+                <button type="button" class="link" [disabled]="olderHistory.isLoading(mission.missionCode)" (click)="loadOlder(mission)">
+                  Load older
+                </button>
+              </td>
+            </tr>
+          }
+        }
+      } @empty {
+        <tr>
+          <td colspan="8" class="muted">No missions.</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+<div class="legend">
+  Active statuses: Created, Executing, Waiting, Cancelling, Warning · Final: Complete, Cancelled, Manual complete, Startup
+  error. Grey rows = previous states (history).
+</div>
+
+@if (dispatchOpen()) {
+  <app-dispatch-dialog (dispatched)="onDispatched($event)" (closed)="dispatchOpen.set(false)" />
+}
+@if (cancelCode(); as code) {
+  <app-cancel-dialog [missionCode]="code" (cancelled)="onCancelled(code)" (closed)="cancelCode.set(null)" />
+}
+@if (toast(); as message) {
+  <div class="toast" role="status">{{ message }}</div>
+}

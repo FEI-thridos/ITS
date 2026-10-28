@@ -1,5 +1,6 @@
 using KukaFm.Middleware.Api.Data;
 using KukaFm.Middleware.Api.Kuka;
+using KukaFm.Middleware.Api.Missions;
 using KukaFm.Middleware.Api.Robots;
 using KukaFm.Middleware.Api.Sync;
 using Microsoft.EntityFrameworkCore;
@@ -22,10 +23,15 @@ builder.Services.AddOptions<SyncOptions>().BindConfiguration(SyncOptions.Section
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpClient<IKukaClient, KukaClient>();
+builder.Services.AddSingleton<SyncReadiness>();
 builder.Services.AddScoped<IRobotRepository, RobotRepository>();
+builder.Services.AddScoped<IMissionRepository, MissionRepository>();
 builder.Services.AddScoped<RobotService>();
+builder.Services.AddScoped<MissionService>();
 builder.Services.AddScoped<RobotSyncService>();
+builder.Services.AddScoped<MissionSyncService>();
 builder.Services.AddHostedService<RobotSyncWorker>();
+builder.Services.AddHostedService<MissionSyncWorker>();
 
 var app = builder.Build();
 
@@ -38,6 +44,7 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 
 app.MapGet("/api/health", () => Results.Ok());
+app.MapMissionEndpoints();
 app.MapRobotEndpoints();
 
 app.Run();

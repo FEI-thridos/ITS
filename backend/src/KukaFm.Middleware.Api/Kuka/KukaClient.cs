@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
+using KukaFm.Middleware.Api.Missions;
 using Microsoft.Extensions.Options;
 
 namespace KukaFm.Middleware.Api.Kuka;
@@ -8,16 +9,30 @@ namespace KukaFm.Middleware.Api.Kuka;
 public interface IKukaClient
 {
     Task<IReadOnlyList<KukaRobot>> RobotQueryAsync(CancellationToken ct);
+
+    /// <summary>Submits a RACK_MOVE mission from <paramref name="startNode"/> to <paramref name="targetNode"/>.</summary>
+    Task SubmitMissionAsync(string requestId, string missionCode, string robotCode, string startNode, string targetNode, CancellationToken ct);
+
+    /// <summary>Force-cancels a mission.</summary>
+    Task MissionCancelAsync(string requestId, string missionCode, CancellationToken ct);
+
+    /// <summary>Per-tick jobQuery with the configured limit and non-empty filters.</summary>
+    Task<IReadOnlyList<KukaJob>> JobQueryAsync(CancellationToken ct);
+
+    /// <summary>Fallback jobQuery for a single job code, without limit and filters.</summary>
+    Task<IReadOnlyList<KukaJob>> JobQueryByCodeAsync(string jobCode, CancellationToken ct);
 }
 
 public class KukaClient : IKukaClient
 {
     private readonly HttpClient _http;
+    private readonly KukaFmOptions _options;
     private readonly ILogger<KukaClient> _logger;
 
     public KukaClient(HttpClient http, IOptions<KukaFmOptions> options, ILogger<KukaClient> logger)
     {
         _http = http;
+        _options = options.Value;
         _logger = logger;
         _http.BaseAddress = new Uri(options.Value.BaseUrl.TrimEnd('/') + "/");
         _http.Timeout = TimeSpan.FromSeconds(options.Value.TimeoutSeconds);
@@ -27,6 +42,51 @@ public class KukaClient : IKukaClient
 
     public async Task<IReadOnlyList<KukaRobot>> RobotQueryAsync(CancellationToken ct) =>
         await PostAsync<List<KukaRobot>>("robotQuery", new { }, ct) ?? [];
+
+    public async Task SubmitMissionAsync(string requestId, string missionCode, string robotCode, string startNode, string targetNode, CancellationToken ct)
+    {
+        var o = _options.SubmitMission;
+        await PostAsync<object>("submitMission", new
+        {
+            orgId = o.OrgId,
+            requestId,
+            missionCode,
+            missionType = MissionService.MissionType,
+            robotIds = new[] { robotCode },
+            missionData = new[]
+            {
+                new { sequence = 1, position = startNode, type = o.NodeType, actionType = "UP_CONTAINER", passStrategy = o.PassStrategy, waitingMillis = o.WaitingMillis },
+                new { sequence = 2, position = targetNode, type = o.NodeType, actionType = "DOWN_CONTAINER", passStrategy = o.PassStrategy, waitingMillis = o.WaitingMillis },
+            },
+        }, ct);
+    }
+
+    public async Task MissionCancelAsync(string requestId, string missionCode, CancellationToken ct) =>
+        await PostAsync<object>("missionCancel", new
+        {
+            requestId,
+            missionCode,
+            containerCode = "",
+            position = "",
+            cancelMode = "FORCE",
+            reason = "",
+        }, ct);
+
+    public async Task<IReadOnlyList<KukaJob>> JobQueryAsync(CancellationToken ct)
+    {
+        var q = _options.JobQuery;
+        var body = new Dictionary<string, object> { ["limit"] = q.Limit };
+        if (q.SourceValue is { } sourceValue)
+            body["sourceValue"] = sourceValue;
+        if (!string.IsNullOrWhiteSpace(q.CreateUsername))
+            body["createUsername"] = q.CreateUsername;
+        if (q.Maps.Length > 0)
+            body["maps"] = q.Maps;
+        return await PostAsync<List<KukaJob>>("jobQuery", body, ct) ?? [];
+    }
+
+    public async Task<IReadOnlyList<KukaJob>> JobQueryByCodeAsync(string jobCode, CancellationToken ct) =>
+        await PostAsync<List<KukaJob>>("jobQuery", new { jobCode }, ct) ?? [];
 
     private async Task<T?> PostAsync<T>(string apiName, object request, CancellationToken ct)
     {

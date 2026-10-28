@@ -9,7 +9,7 @@ Recap of the work done so far and the planned next phases.
 | 3 | System design, CLAUDE.md, agents | ✅ Done |
 | 4 | Backbone (scaffolding) with agents | ✅ Done |
 | 5 | Feature: Robot management | ✅ Done |
-| 6 | Feature: Mission management | ⏳ Planned |
+| 6 | Feature: Mission management | ✅ Done |
 | 7 | Testing and hardening | ⏳ Planned |
 | 8 | Deployment via CI/CD | ⏳ Planned |
 
@@ -50,6 +50,8 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 - Tasks per use case: backend endpoint, DB, KUKA FM call, frontend, unit tests.
 
 **Columns:** Order No, Work Item Type, Title, Description, Acceptance Criteria (Features + User Stories), Activity (Backend / Frontend / Testing / Deployment), Estimated Hours.
+
+**Later updates:** container code and priority removed from missions; Cancel only for cancelable statuses (10, 20, 25, 50).
 
 **Outputs** (`backlog/`)
 - `backlog.csv` – import-ready.
@@ -170,31 +172,59 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 
 ---
 
-## Phase 6 – Feature: Mission management ⏳
+## Phase 6 – Feature: Mission management ✅
 
 **Goal:** dispatch, cancel and track missions with history (UC1–UC5).
 
-**Backend**
-- `submitMission`, `missionCancel`, `jobQuery` (+ per-jobCode fallback).
-- Mission sync – starts only after the first successful robot sync with ≥ 1 robot (signal from 1.2.3.1), history mirrors all columns, `completed_at` on final status.
-- `IRobotRepository.GetAsync` for dispatch validation.
-- Generated `missionCode` / `requestId` (≤ 32 chars, unique).
-- `GET /api/missions`, `GET /api/missions/{code}/history`, `POST /api/missions`, `POST /api/missions/{code}/cancel`.
-- Unit tests: validation boundaries, cancel 404/409, sync transitions, KUKA errors.
+**Key decisions**
+- `submitMission` sends exactly the verified fields: `orgId` (Labak), GUID `missionCode` / `requestId`, `RACK_MOVE`, robot, start → target node.
+- Container code and priority removed everywhere (DB, API, UI, ERD, mockup, backlog).
+- Cancel only for 10, 20, 25, 50 – status 28 (Cancelling) → 409.
+- Dispatch and cancel return **503 "Synchronization not ready yet"** until robot and mission sync both succeeded once.
+- Lists support `includeHistory=true` (newest 100 rows embedded, one request per tick); history endpoints paginated (≤ 100 per page) – for missions and robots.
+- Mission sync: one `jobQuery` + per-jobCode fallback; null `robotId` keeps the current robot; unknown robot or status fails the tick.
+- Invalid `state` → 400; 201 without `Location` header.
 
-**Frontend**
-- Missions view, All/Active/Finished filter, Show history, Auto-refresh 1 s.
-- Dispatch dialog (robot select, nodes, container, priority 1–99), Cancel with FORCE confirmation.
-- ProblemDetails error messages (reuse `core/` helper).
-- Align app header with the mockup (deferred from phase 5).
+**Backend** (`backend-expert`)
+- Migration `RemoveMissionContainerAndPriority`.
+- KUKA client: `submitMission`, `missionCancel` (FORCE), `jobQuery` (+ by jobCode).
+- Readiness gate (1.2.3.1 signal), mission repository, paging helper.
+- Mission service + endpoints (400 field errors, 404, 409, 502, 503); robot endpoints switched to `includeHistory` + paging.
+- Mission sync worker with full history rows and `completed_at`.
+- `nuget.config` ignores user-level disabled sources.
+- 181 unit tests.
 
-**Backlog:** 1.1.1.x – 1.1.5.x
+**Frontend** (`frontend-expert`)
+- Missions view: filter, Show history + "Load older", Auto-refresh 1 s, Cancel for cancelable statuses.
+- Dispatch dialog (field errors, 502/503) and Cancel dialog (FORCE), toasts.
+- Robots view: one request per tick + "Load older"; header aligned with the mockup.
+- `npm audit fix`: Angular build tooling 22.2.5 (9 approved optional packages) → 0 vulnerabilities.
+
+**Documentation**
+- Spec, backlog acceptance criteria and tasks, ERD + PNG, mockup + screenshots updated.
+
+**Review** (`reviewer`)
+- All acceptance criteria of 1.1, 1.1.1–1.1.5 and 1.2.3.1 met (live KUKA calls not verifiable).
+- Minor findings fixed (single `RACK_MOVE` constant, backlog task wording); re-check **approve**.
+
+**Verified**
+- `dotnet build` 0 warnings · 181/181 tests · no vulnerable packages · `ng build` · `npm audit` 0.
+- Dev stack: all list/history endpoints and 400/404 responses as specified; dispatch and cancel 503 while KUKA FM is down; mission sync waits for robot sync; no token in logs.
+
+**Open**
+- KUKA FM down → live mission calls and status 31 after cancel not verified (phase 8).
+- `includeHistory` SQL not yet run against real data (phase 7).
+- DB save failing after KUKA accepted a dispatch → 500 (phase 7).
+
+**Backlog:** 1.1.1.1–1.1.1.5, 1.1.2.1–1.1.2.5, 1.1.3.1–1.1.3.4, 1.1.4.1–1.1.4.4, 1.1.5.1–1.1.5.4, 1.2.3.1
 
 ---
 
 ## Phase 7 – Testing and hardening ⏳
 
 - Review edge-case coverage against system-definition §11.
+- Run `includeHistory` and paginated history against real data.
+- Decide handling of a DB save failure after KUKA accepted a dispatch.
 - Full dev stack run: dispatch → sync → cancel → history, verified in UI and Seq.
 - Logging check: user operations, KUKA calls, sync results; no secrets in logs.
 - Reviewer pass over the whole codebase (minimal code, spec conformity).
@@ -219,5 +249,6 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
    - TLS handshake with the trusted self-signed cert succeeds.
    - KUKA field types match (`status`, `batteryLevel` numeric; `robotId`, `code` strings).
    - `/api/robots/abc/history` returns ProblemDetails.
+   - Dispatch and cancel work against real KUKA FM; status 31 appears after a cancel; `jobQuery` field types match.
 5. Import backlog (`backlog.csv`) into Azure Boards; close completed items.
 6. Document the final solution in the Wiki (acceptance criterion).

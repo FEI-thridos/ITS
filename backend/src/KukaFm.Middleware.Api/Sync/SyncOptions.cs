@@ -8,4 +8,7 @@ public class SyncOptions
 
     [Range(1, int.MaxValue)]
     public int RobotIntervalSeconds { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int MissionIntervalSeconds { get; set; }
 }

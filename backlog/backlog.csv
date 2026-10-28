@@ -3,30 +3,30 @@ Order No,Work Item Type,Title,Description,Acceptance Criteria,Activity,Estimated
 1.1,Feature,Mission Management,"Dispatching, cancelling and monitoring missions created by the middleware (UC1–UC5).","• Missions can be dispatched, cancelled and monitored through the middleware without using the KUKA FM UI
 • Only missions dispatched by the middleware are tracked, each with current status and full status history
 • All user operations and KUKA calls are logged in Seq",,
-1.1.1,User Story,UC1 Dispatch mission,As an operator I want to dispatch a new RACK_MOVE mission to a selected robot.,"• Dialog requires a robot from the DB, start node, target node, container code and priority 1–99
+1.1.1,User Story,UC1 Dispatch mission,As an operator I want to dispatch a new RACK_MOVE mission to a selected robot.,"• Dialog requires a robot from the DB, start node and target node
 • Invalid input is rejected with 400 and no KUKA call is made
 • On KUKA success the mission is stored with status 10 (Created) and appears in the list
 • On KUKA error an error is shown (502), nothing is stored and the error is logged",,
-1.1.1.1,Task,Endpoint POST /api/missions + input validation,"Create POST /api/missions. Validate start node, target node, container code, priority (1–99) and that the robot exists. Return 201 or a validation error.",,Backend,6
+1.1.1.1,Task,Endpoint POST /api/missions + input validation,"Create POST /api/missions. Validate start node, target node (required, trimmed, max 64 chars) and that the robot exists. Return 201 or a validation error.",,Backend,6
 1.1.1.2,Task,DB: insert mission,"Persist the new mission with status 10 (Created), generated mission_code/request_id and robot FK. Write only after KUKA FM confirms success.",,Backend,4
 1.1.1.3,Task,KUKA FM: submitMission call (RACK_MOVE),"Call submitMission at https://kukafm.its.fei with Authorization token. Build RACK_MOVE body (missionData start/target node, robotIds); other params from appsettings. Handle success=false.",,Backend,6
-1.1.1.4,Task,Dispatch dialog + robot select,"Dialog opened by '+ Dispatch mission' with robot select (robots from DB), start/target node, container code and priority. Show success or error message.",,Frontend,6
+1.1.1.4,Task,Dispatch dialog + robot select,"Dialog opened by '+ Dispatch mission' with robot select (robots from DB), start node and target node. Show success or error message.",,Frontend,6
 1.1.1.5,Task,Unit tests for dispatch mission,"Unit tests for input validation, KUKA submitMission request mapping and service logic (KUKA client and DB mocked).",,Testing,6
-1.1.2,User Story,UC2 Cancel mission,As an operator I want to force-cancel a running mission.,"• Cancel is offered only for active missions (10, 20, 25, 28, 50) and needs confirmation
+1.1.2,User Story,UC2 Cancel mission,As an operator I want to force-cancel a running mission.,"• Cancel is offered only for cancelable missions (10, 20, 25, 50) and needs confirmation; 28 (Cancelling) is already being cancelled
 • missionCancel is sent with FORCE
-• Unknown mission returns 404, non-active mission returns 409
+• Unknown mission returns 404, non-cancelable mission (incl. 28) returns 409
 • Final status Cancelled (31) appears after the next sync",,
-1.1.2.1,Task,Endpoint POST /api/missions/{code}/cancel,"Create POST /api/missions/{code}/cancel. Return 200 on success, 404 if not found, 409 if mission is not active.",,Backend,4
-1.1.2.2,Task,DB: load mission + active status check,"Load mission by mission_code and check that its status is active (10, 20, 25, 28, 50).",,Backend,2
+1.1.2.1,Task,Endpoint POST /api/missions/{code}/cancel,"Create POST /api/missions/{code}/cancel. Return 200 on success, 404 if not found, 409 if mission is not cancelable (only 10, 20, 25, 50; incl. 28 Cancelling).",,Backend,4
+1.1.2.2,Task,DB: load mission + active status check,"Load mission by mission_code and check that its status is cancelable (10, 20, 25, 50).",,Backend,2
 1.1.2.3,Task,KUKA FM: missionCancel call (FORCE),Call missionCancel with missionCode and cancelMode FORCE. Final status (31 Cancelled) is stored later by mission sync.,,Backend,4
-1.1.2.4,Task,Cancel button + confirm dialog,Cancel button shown only on active missions; confirmation dialog mentioning FORCE cancel; show result message.,,Frontend,3
+1.1.2.4,Task,Cancel button + confirm dialog,"Cancel button shown only on cancelable missions (10, 20, 25, 50); confirmation dialog mentioning FORCE cancel; show result message.",,Frontend,3
 1.1.2.5,Task,Unit tests for cancel mission,Unit tests for active / not-active / not-found cases and KUKA FM error handling (KUKA client and DB mocked).,,Testing,4
-1.1.3,User Story,UC3 View mission status,As an operator I want to see the current status of active and finished missions.,"• List shows code, status, robot, nodes, container, priority and times
+1.1.3,User Story,UC3 View mission status,As an operator I want to see the current status of active and finished missions.,"• List shows code, status, robot, nodes and times
 • All / Active / Finished filter works
 • Data refreshes every 1 s while Auto-refresh is on",,
 1.1.3.1,Task,Endpoint GET /api/missions (active/finished filter),"Create GET /api/missions with optional filter state=active|finished; return missions with status code and name, robot and timestamps.",,Backend,3
 1.1.3.2,Task,DB: missions query,"EF Core query over mission table with status filter, robot join and ordering by created_at desc.",,Backend,2
-1.1.3.3,Task,Missions table + filter + 1 s polling,"Missions table (code, status badge, robot, nodes, container, priority, times) with All/Active/Finished filter and auto-refresh every 1 s.",,Frontend,8
+1.1.3.3,Task,Missions table + filter + 1 s polling,"Missions table (code, status badge, robot, nodes, times) with All/Active/Finished filter and auto-refresh every 1 s.",,Frontend,8
 1.1.3.4,Task,Unit tests for view mission status,Unit tests for the active/finished filter logic and the missions service.,,Testing,3
 1.1.4,User Story,UC4 View mission status history,As an operator I want to see all previous statuses of a mission.,"• Show history shows all previous states, newest first, with valid-from and valid-to times
 • Unknown mission returns 404",,

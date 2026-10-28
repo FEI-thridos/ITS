@@ -42,14 +42,14 @@ Source: [use-cases.drawio](use-cases.drawio)
 
 | ID | Use case | Actor | Goal | Main scenario |
 |---|---|---|---|---|
-| UC1 | Dispatch mission | Operator | Send a new RACK_MOVE mission to KUKA FM. | Operator fills robot, start node, target node, container code and priority → system validates input → calls KUKA `submitMission` → stores mission (Created) → shows confirmation. *Alt:* KUKA error is shown and logged; mission is not stored. |
-| UC2 | Cancel mission | Operator | Stop an active mission. | Operator selects an active mission and confirms → system calls KUKA `missionCancel` (FORCE) → logs and confirms. Final status *Cancelled* is stored by UC5. *Alt:* mission not active → 409. |
+| UC1 | Dispatch mission | Operator | Send a new RACK_MOVE mission to KUKA FM. | Operator fills robot, start node and target node → system checks that syncs are ready (else 503) and validates input (else 400, no KUKA call) → calls KUKA `submitMission` → stores mission (10 Created) → 201. *Alt:* KUKA error → 502, shown and logged; mission is not stored. |
+| UC2 | Cancel mission | Operator | Stop a running mission. | Operator selects a cancelable mission (10, 20, 25, 50) and confirms → system calls KUKA `missionCancel` (FORCE) → logs and confirms. Final status *Cancelled* is stored by UC5. *Alt:* syncs not ready → 503; unknown → 404; 28 Cancelling or final → 409; KUKA error → 502. |
 | UC3 | View mission status | Operator | See current status of active and finished missions. | Operator opens Missions → system shows missions with current status (filter All / Active / Finished) → list refreshes every 1 s. |
-| UC4 | View mission status history (extends UC3) | Operator | See all previous statuses of a mission. | Operator enables *Show history* → system shows previous states with timestamps. |
-| UC5 | Synchronize mission status | Scheduler | Keep stored mission statuses up to date. | On interval system loads active missions (10, 20, 25, 28, 50) → calls KUKA `jobQuery` → for changed missions stores previous state in history and updates current state. Final statuses (30, 31, 35, 60) are no longer polled. |
+| UC4 | View mission status history (extends UC3) | Operator | See all previous statuses of a mission. | Operator enables *Show history* → newest 100 previous states come with the list; *Load older* pages through the rest. |
+| UC5 | Synchronize mission status | Scheduler | Keep stored mission statuses up to date. | Starts after the first successful robot sync (≥ 1 robot). On interval loads active missions (10, 20, 25, 28, 50) → one KUKA `jobQuery` + per-jobCode fallback for missing ones → for changed missions stores previous state in history and updates; final status sets `completed_at`. Final statuses (30, 31, 35, 60) are no longer polled. |
 | UC6 | View robot status | Operator | See current state of all robots. | Operator opens Robots → system shows robots with state Available / Busy / Offline, KUKA status, battery, node and mission → list refreshes every 1 s. |
-| UC7 | View robot status history (extends UC6) | Operator | See all previous states of a robot. | Operator enables *Show history* → system shows previous states with timestamps. |
-| UC8 | Synchronize robot status | Scheduler | Keep stored robot states up to date. | On interval (first on startup) system calls KUKA `robotQuery` → inserts new robots, for changed robots stores previous state in history and updates current state. |
+| UC7 | View robot status history (extends UC6) | Operator | See all previous states of a robot. | Operator enables *Show history* → newest 100 previous states come with the list; *Load older* pages through the rest. |
+| UC8 | Synchronize robot status | Scheduler | Keep stored robot states up to date. | First on startup, then on interval system calls KUKA `robotQuery` → inserts new robots, for changed robots stores previous state in history and updates; first success with ≥ 1 robot signals mission sync to start. |
 
 ## 4. Procesný diagram / diagram aktivít
 
@@ -66,20 +66,26 @@ sequenceDiagram
     participant KUKA as KUKA FM
     participant DB as Database
 
-    UI->>UI: Fill form + Send
+    UI->>UI: Fill robot, start node, target node + Dispatch
     UI->>MW: POST /api/missions
-    MW->>MW: Validate input
-    MW->>KUKA: submitMission (RACK_MOVE)
-    KUKA-->>MW: success / error
-    alt success
-        MW->>DB: INSERT mission (Created)
-        MW->>MW: Log to Seq
-        MW-->>UI: 201 Created
-    else error
-        MW->>MW: Log error to Seq
-        MW-->>UI: Error
+    alt syncs not ready yet
+        MW-->>UI: 503 Synchronization not ready yet
+    else invalid input (required, max 64 chars, robot exists)
+        MW-->>UI: 400 field errors (no KUKA call)
+    else valid
+        MW->>MW: Generate missionCode + requestId (GUID)
+        MW->>KUKA: submitMission (RACK_MOVE)
+        KUKA-->>MW: success / error
+        alt success
+            MW->>DB: INSERT mission (10 Created)
+            MW->>MW: Log to Seq
+            MW-->>UI: 201 Mission
+        else KUKA error
+            MW->>MW: Log error to Seq
+            MW-->>UI: 502 KUKA FM error (nothing stored)
+        end
     end
-    UI->>UI: Show result
+    UI->>UI: Show result (toast / error in dialog)
 ```
 
 ### 4.2 UC2 – Cancel mission
@@ -91,21 +97,26 @@ sequenceDiagram
     participant KUKA as KUKA FM
     participant DB as Database
 
-    UI->>UI: Cancel + confirm
+    UI->>UI: Cancel + confirm (FORCE)
     UI->>MW: POST /api/missions/{missionCode}/cancel
-    MW->>DB: SELECT mission
-    DB-->>MW: mission
-    MW->>MW: Check mission is active
-    alt mission is active
-        MW->>KUKA: missionCancel (cancelMode = FORCE)
-        KUKA-->>MW: success / error
-        MW->>MW: Log to Seq
-        MW-->>UI: 200 OK / error
-    else not active
-        MW-->>UI: 409 Conflict
+    alt syncs not ready yet
+        MW-->>UI: 503 Synchronization not ready yet
+    else
+        MW->>DB: SELECT mission
+        DB-->>MW: mission
+        alt unknown mission
+            MW-->>UI: 404
+        else not cancelable (28 Cancelling or final)
+            MW-->>UI: 409
+        else cancelable (10, 20, 25, 50)
+            MW->>KUKA: missionCancel (cancelMode = FORCE)
+            KUKA-->>MW: success / error
+            MW->>MW: Log to Seq
+            MW-->>UI: 200 / 502 KUKA FM error
+        end
     end
     UI->>UI: Show result
-    Note over MW,DB: Final status "Cancelled" is stored later by UC5 sync
+    Note over MW,DB: Local status is not changed – Cancelled (31) is stored by UC5 sync
 ```
 
 ### 4.3 UC3 – View mission status
@@ -117,13 +128,17 @@ sequenceDiagram
     participant KUKA as KUKA FM
     participant DB as Database
 
-    UI->>UI: Open Missions
-    loop every 1 s
-        UI->>MW: GET /api/missions?state=active|finished
-        MW->>DB: SELECT missions (filter)
-        DB-->>MW: rows
-        MW-->>UI: 200 list
-        UI->>UI: Render table
+    UI->>UI: Open Missions, choose All / Active / Finished
+    loop every 1 s while Auto-refresh is on
+        UI->>MW: GET /api/missions?state=active|finished(&includeHistory=true)
+        alt invalid state
+            MW-->>UI: 400
+        else
+            MW->>DB: SELECT missions (filter, newest first)
+            DB-->>MW: rows (+ newest 100 history rows each)
+            MW-->>UI: 200 list
+            UI->>UI: Render table
+        end
     end
 ```
 
@@ -136,12 +151,16 @@ sequenceDiagram
     participant KUKA as KUKA FM
     participant DB as Database
 
-    UI->>UI: Select mission
-    UI->>MW: GET /api/missions/{missionCode}/history
-    MW->>DB: SELECT mission history
-    DB-->>MW: rows
-    MW-->>UI: 200 list
-    UI->>UI: Render timeline
+    UI->>UI: Check Show history
+    Note over UI,MW: Newest 100 rows arrive with the UC3 list (includeHistory=true)
+    UI->>UI: Render grey rows (valid from – valid to)
+    opt Load older
+        UI->>MW: GET /api/missions/{missionCode}/history?page=N&pageSize=100
+        MW->>DB: SELECT mission history page (newest first)
+        DB-->>MW: rows + total count
+        MW-->>UI: 200 page / 404 unknown mission
+        UI->>UI: Append older rows
+    end
 ```
 
 ### 4.5 UC5 – Synchronize mission status
@@ -153,21 +172,29 @@ sequenceDiagram
     participant KUKA as KUKA FM
     participant DB as Database
 
-    Note over SCH: Interval from appsettings
+    Note over SCH: Starts after first successful robot sync (≥ 1 robot), then interval from appsettings
     SCH->>MW: Timer tick – run mission sync
     MW->>DB: SELECT active missions (10, 20, 25, 28, 50)
     DB-->>MW: missions
-    loop for each active mission
-        MW->>KUKA: jobQuery (jobCode)
-        KUKA-->>MW: job status / error
-        alt error
-            MW->>MW: Log error, skip until next tick
-        else status changed
-            MW->>DB: INSERT previous state into history
-            MW->>DB: UPDATE mission status
+    alt no active missions
+        MW->>MW: Nothing to do (tick counts as successful)
+    else
+        MW->>KUKA: jobQuery (limit + filters)
+        KUKA-->>MW: jobs / error
+        loop for each active mission missing in the response
+            MW->>KUKA: jobQuery (jobCode)
+            KUKA-->>MW: job / nothing / error
+        end
+        alt KUKA / DB error or invalid data
+            MW->>MW: Log error, write nothing, retry next tick
+        else
+            loop for each mission whose status or robot changed
+                MW->>DB: INSERT previous state into history (all columns)
+                MW->>DB: UPDATE mission (+ completed_at if final)
+            end
+            MW->>MW: Log counts to Seq, mark missions ready
         end
     end
-    MW->>MW: Log to Seq
     Note over MW,DB: Missions in 30, 31, 35, 60 are final – not polled anymore
 ```
 
@@ -181,10 +208,11 @@ sequenceDiagram
     participant DB as Database
 
     UI->>UI: Open Robots
-    loop every 1 s
-        UI->>MW: GET /api/robots
+    loop every 1 s while Auto-refresh is on
+        UI->>MW: GET /api/robots(?includeHistory=true)
         MW->>DB: SELECT robots
-        DB-->>MW: rows
+        DB-->>MW: rows (+ newest 100 history rows each)
+        MW->>MW: Map status → Available / Busy / Offline
         MW-->>UI: 200 list
         UI->>UI: Render table
     end
@@ -199,12 +227,16 @@ sequenceDiagram
     participant KUKA as KUKA FM
     participant DB as Database
 
-    UI->>UI: Select robot
-    UI->>MW: GET /api/robots/{robotId}/history
-    MW->>DB: SELECT robot history
-    DB-->>MW: rows
-    MW-->>UI: 200 list
-    UI->>UI: Render timeline
+    UI->>UI: Check Show history
+    Note over UI,MW: Newest 100 rows arrive with the UC6 list (includeHistory=true)
+    UI->>UI: Render grey rows (valid from – valid to)
+    opt Load older
+        UI->>MW: GET /api/robots/{id}/history?page=N&pageSize=100
+        MW->>DB: SELECT robot history page (newest first)
+        DB-->>MW: rows + total count
+        MW-->>UI: 200 page / 404 unknown robot
+        UI->>UI: Append older rows
+    end
 ```
 
 ### 4.8 UC8 – Synchronize robot status
@@ -216,12 +248,12 @@ sequenceDiagram
     participant KUKA as KUKA FM
     participant DB as Database
 
-    Note over SCH: Interval from appsettings
+    Note over SCH: First tick at startup, then interval from appsettings
     SCH->>MW: Timer tick – run robot sync
-    MW->>KUKA: robotQuery (all)
+    MW->>KUKA: robotQuery {} (all robots)
     KUKA-->>MW: robots / error
-    alt error
-        MW->>MW: Log error, skip until next tick
+    alt KUKA / DB error or invalid data
+        MW->>MW: Log error, write nothing, retry next tick
     else success
         MW->>MW: Map status (Available / Busy / Offline)
         MW->>DB: SELECT robots
@@ -229,12 +261,15 @@ sequenceDiagram
         loop for each robot from KUKA
             alt new robot
                 MW->>DB: INSERT robot
-            else status changed
-                MW->>DB: INSERT previous state into history
-                MW->>DB: UPDATE robot status
+            else any column changed
+                MW->>DB: INSERT previous state into history (all columns)
+                MW->>DB: UPDATE robot
             end
         end
-        MW->>MW: Log to Seq
+        MW->>MW: Log counts to Seq
+        opt first success with ≥ 1 robot
+            MW->>MW: Signal mission sync to start (robots ready)
+        end
     end
 ```
 

@@ -11,8 +11,6 @@ public class Mission
     public required string MissionType { get; set; }
     public required string StartNode { get; set; }
     public required string TargetNode { get; set; }
-    public required string ContainerCode { get; set; }
-    public short Priority { get; set; }
     public long RobotId { get; set; }
     public Robot Robot { get; set; } = null!;
     public short Status { get; set; }
@@ -35,7 +33,6 @@ public class MissionConfiguration : IEntityTypeConfiguration<Mission>
         builder.Property(m => m.MissionType).HasMaxLength(20);
         builder.Property(m => m.StartNode).HasMaxLength(64);
         builder.Property(m => m.TargetNode).HasMaxLength(64);
-        builder.Property(m => m.ContainerCode).HasMaxLength(64);
         builder.Property(m => m.StatusName).HasMaxLength(32);
     }
 }

@@ -82,7 +82,7 @@
       <table>
         <thead><tr>
           <th>Mission code</th><th>Status</th><th>Robot</th><th>Start node</th><th>Target node</th>
-          <th>Container</th><th>Priority</th><th>Created</th><th>Updated / valid to</th><th></th>
+          <th>Created</th><th>Updated / valid to</th><th></th>
         </tr></thead>
         <tbody id="m-body"></tbody>
       </table>
@@ -116,10 +116,8 @@
   <form class="modal" id="form-dispatch">
     <h2>Dispatch mission (RACK_MOVE)</h2>
     <div class="field"><label>Robot *</label><select id="f-robot" required></select><small>Only robots stored in the database.</small></div>
-    <div class="field"><label>Start node *</label><input id="f-start" required placeholder="M001-A001-45"></div>
-    <div class="field"><label>Target node *</label><input id="f-target" required placeholder="M001-A001-40"></div>
-    <div class="field"><label>Container code *</label><input id="f-container" required placeholder="1000002"></div>
-    <div class="field"><label>Priority *</label><input id="f-priority" type="number" min="1" max="99" value="1" required><small>1 = highest, 99 = lowest</small></div>
+    <div class="field"><label>Start node *</label><input id="f-start" required placeholder="Labak-CHTN-33"></div>
+    <div class="field"><label>Target node *</label><input id="f-target" required placeholder="Labak-CHTN-25"></div>
     <div class="actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Dispatch</button></div>
   </form>
 </div>
@@ -148,23 +146,23 @@ const pad = n => String(n).padStart(2, "0");
 const fmt = d => d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` : "–";
 
 const robots = [
-  { code:"13", type:"KMP600I", status:4, battery:78, map:"M001", node:"M001-A001-31", mission:"MW-20261014-0003", updated:ago(4), history:[
+  { code:"13", type:"KMP600I", status:4, battery:78, map:"M001", node:"M001-A001-31", mission:"3f2a9c1e7b4d4e8a9c0d5b6e7f8a9b01", updated:ago(4), history:[
       { status:3, battery:80, map:"M001", node:"M001-A001-26", mission:null, validTo:ago(4) },
       { status:5, battery:62, map:"M001", node:"CHARGER-01", mission:null, validTo:ago(600) } ] },
   { code:"14", type:"KMP600I", status:3, battery:91, map:"M001", node:"M001-A001-40", mission:null, updated:ago(120), history:[
-      { status:4, battery:93, map:"M001", node:"M001-A001-45", mission:"MW-20261014-0001", validTo:ago(120) } ] },
+      { status:4, battery:93, map:"M001", node:"M001-A001-45", mission:"c4d5e6f7a8b94c0d8e1f2a3b4c5d6e03", validTo:ago(120) } ] },
   { code:"15", type:"KMP600I", status:5, battery:23, map:"M001", node:"CHARGER-02", mission:null, updated:ago(300), history:[] },
   { code:"16", type:"KMP600I", status:2, battery:0, map:"M001", node:"M001-A001-12", mission:null, updated:ago(3600), history:[
       { status:7, battery:4, map:"M001", node:"M001-A001-12", mission:null, validTo:ago(3600) } ] },
 ];
 
 const missions = [
-  { code:"MW-20261014-0003", status:20, robot:"13", start:"M001-A001-26", target:"M001-A001-31", container:"1000003", priority:1, created:ago(40), updated:ago(4), history:[
+  { code:"3f2a9c1e7b4d4e8a9c0d5b6e7f8a9b01", status:20, robot:"13", start:"M001-A001-26", target:"M001-A001-31", created:ago(40), updated:ago(4), history:[
       { status:10, robot:"13", validTo:ago(4) } ] },
-  { code:"MW-20261014-0002", status:10, robot:"14", start:"M001-A001-40", target:"M001-A001-49", container:"1000002", priority:5, created:ago(2), updated:ago(2), history:[] },
-  { code:"MW-20261014-0001", status:30, robot:"14", start:"M001-A001-45", target:"M001-A001-40", container:"1000001", priority:1, created:ago(400), updated:ago(120), history:[
+  { code:"8b1c2d3e4f5a4b6c8d7e9f0a1b2c3d02", status:10, robot:"14", start:"M001-A001-40", target:"M001-A001-49", created:ago(2), updated:ago(2), history:[] },
+  { code:"c4d5e6f7a8b94c0d8e1f2a3b4c5d6e03", status:30, robot:"14", start:"M001-A001-45", target:"M001-A001-40", created:ago(400), updated:ago(120), history:[
       { status:20, robot:"14", validTo:ago(120) }, { status:10, robot:"14", validTo:ago(380) } ] },
-  { code:"MW-20261013-0007", status:31, robot:"15", start:"M001-A001-12", target:"M001-A001-49", container:"1000007", priority:3, created:ago(86400), updated:ago(86000), history:[
+  { code:"e7f8a9b0c1d24e3f9a4b5c6d7e8f9a07", status:31, robot:"15", start:"M001-A001-12", target:"M001-A001-49", created:ago(86400), updated:ago(86000), history:[
       { status:28, robot:"15", validTo:ago(86000) }, { status:20, robot:"15", validTo:ago(86100) }, { status:10, robot:"15", validTo:ago(86350) } ] },
 ];
 
@@ -186,13 +184,13 @@ function renderMissions() {
     .filter(m => filter === "all" || (filter === "active") === ACTIVE.includes(m.status))
     .map(m => {
       let html = `<tr><td><b>${m.code}</b></td><td>${missionBadge(m.status)}</td><td>${m.robot}</td><td>${m.start}</td><td>${m.target}</td>
-        <td>${m.container}</td><td>${m.priority}</td><td>${fmt(m.created)}</td><td>${fmt(m.updated)}</td>
+        <td>${fmt(m.created)}</td><td>${fmt(m.updated)}</td>
         <td>${ACTIVE.includes(m.status) && m.status !== 28 ? `<button class="danger" data-cancel="${m.code}">Cancel</button>` : ""}</td></tr>`;
       if (showHist) html += m.history.map(h => `<tr class="hist"><td>↳ previous state</td><td>${missionBadge(h.status)}</td><td>${h.robot}</td>
-        <td colspan="5"></td><td>${fmt(h.validTo)}</td><td></td></tr>`).join("");
+        <td colspan="3"></td><td>${fmt(h.validTo)}</td><td></td></tr>`).join("");
       return html;
     }).join("");
-  document.getElementById("m-body").innerHTML = rows || `<tr><td colspan="10" class="muted">No missions.</td></tr>`;
+  document.getElementById("m-body").innerHTML = rows || `<tr><td colspan="8" class="muted">No missions.</td></tr>`;
 }
 
 function renderRobots() {
@@ -268,13 +266,11 @@ document.getElementById("btn-dispatch").onclick = () => {
     robots.map(r => `<option value="${r.code}">${r.code} · ${r.type} · ${mapState(r.status)}</option>`).join("");
   open("dlg-dispatch");
 };
-let seq = 4;
 document.getElementById("form-dispatch").onsubmit = e => {
   e.preventDefault();
-  const code = `MW-20261014-${String(seq++).padStart(4, "0")}`;
+  const code = crypto.randomUUID().replace(/-/g, "");
   missions.unshift({ code, status:10, robot:document.getElementById("f-robot").value,
     start:document.getElementById("f-start").value, target:document.getElementById("f-target").value,
-    container:document.getElementById("f-container").value, priority:+document.getElementById("f-priority").value,
     created:now(), updated:now(), history:[] });
   close(e.target); e.target.reset(); renderMissions();
   toast(`Mission ${code} dispatched`);

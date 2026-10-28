@@ -4,6 +4,8 @@
   --text: #1f2933;
   --muted: #6b7785;
   --border: #d9dee5;
+  --primary: #ff6a00;
+  --primary-text: #ffffff;
   --hist: #f7f8fa;
   --ok: #1e8e3e;
   --ok-bg: #e6f4ea;
@@ -11,6 +13,8 @@
   --busy-bg: #fef3e0;
   --off: #c5221f;
   --off-bg: #fce8e6;
+  --info: #1a73e8;
+  --info-bg: #e8f0fe;
   --grey-bg: #eceff1;
 }
 
@@ -138,4 +142,127 @@ tr.hist td:first-child {
 .b-off {
   color: var(--off);
   background: var(--off-bg);
+}
+.b-info {
+  color: var(--info);
+  background: var(--info-bg);
+}
+.b-grey {
+  color: var(--muted);
+  background: var(--grey-bg);
+}
+
+/* Buttons */
+button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  background: #fff;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+button.primary {
+  color: var(--primary-text);
+  border-color: var(--primary);
+  background: var(--primary);
+}
+button.danger {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--off);
+  border-color: var(--off);
+}
+button.primary.danger {
+  padding: 6px 14px;
+  font-size: inherit;
+  color: var(--primary-text);
+  background: var(--off);
+}
+button.link {
+  padding: 0;
+  border: none;
+  font-size: 12px;
+  color: var(--info);
+  background: none;
+}
+
+/* Segmented filter */
+.seg button {
+  margin-left: -1px;
+  border-radius: 0;
+}
+.seg button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.seg button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.seg button.on {
+  position: relative;
+  color: var(--info);
+  border-color: var(--info);
+  background: var(--info-bg);
+}
+
+/* Dialogs */
+.modal-bg {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.modal {
+  width: 100%;
+  max-width: 440px;
+  padding: 20px;
+  border-radius: 8px;
+  background: #fff;
+}
+.modal h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.field input,
+.field select {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+}
+.field .invalid {
+  border-color: var(--off);
+}
+.field small {
+  color: var(--muted);
+}
+.field small.invalid-text {
+  color: var(--off);
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  padding: 10px 16px;
+  border-radius: 6px;
+  color: #fff;
+  background: #2b2f36;
 }

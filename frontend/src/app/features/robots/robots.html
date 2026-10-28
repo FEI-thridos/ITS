@@ -54,7 +54,8 @@
           <td>{{ robot.updatedAt | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
         </tr>
         @if (showHistory()) {
-          @for (entry of histories()?.get(robot.id) ?? []; track $index) {
+          @let newest = robot.history ?? [];
+          @for (entry of olderHistory.rows(robot.id, newest); track $index) {
             <tr class="hist">
               <td>↳ previous state</td>
               <td>{{ entry.robotType ?? '–' }}</td>
@@ -65,6 +66,15 @@
               <td>{{ entry.nodeCode ?? '–' }}</td>
               <td>{{ entry.missionCode ?? '–' }}</td>
               <td>{{ entry.validFrom | date: 'yyyy-MM-dd HH:mm:ss' }} – {{ entry.validTo | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
+            </tr>
+          }
+          @if (olderHistory.hasMore(robot.id, newest)) {
+            <tr class="hist">
+              <td colspan="9">
+                <button type="button" class="link" [disabled]="olderHistory.isLoading(robot.id)" (click)="loadOlder(robot)">
+                  Load older
+                </button>
+              </td>
             </tr>
           }
         }

@@ -4,8 +4,12 @@ using KukaFm.Middleware.Api.Robots;
 
 namespace KukaFm.Middleware.Api.Sync;
 
-/// <summary>One robot sync tick (UC8). Errors are logged and nothing is written; only cancellation propagates.</summary>
-public class RobotSyncService(IKukaClient kuka, IRobotRepository robots, TimeProvider time, ILogger<RobotSyncService> logger)
+/// <summary>
+/// One robot sync tick (UC8). Errors are logged and nothing is written; only cancellation propagates.
+/// The first successful tick with at least one robot opens the gate for the mission sync.
+/// </summary>
+public class RobotSyncService(
+    IKukaClient kuka, IRobotRepository robots, SyncReadiness readiness, TimeProvider time, ILogger<RobotSyncService> logger)
 {
     public async Task SyncAsync(CancellationToken ct)
     {
@@ -49,6 +53,9 @@ public class RobotSyncService(IKukaClient kuka, IRobotRepository robots, TimePro
             await robots.SaveChangesAsync(ct);
             logger.LogInformation("Robot sync: {Received} received, {Inserted} inserted, {Changed} changed",
                 kukaRobots.Count, inserted, changed);
+
+            if (kukaRobots.Count > 0 && readiness.MarkRobotsReady())
+                logger.LogInformation("First robot sync succeeded, mission sync can start");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

@@ -1,14 +1,20 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
-import { EMPTY, Observable, catchError, exhaustMap, forkJoin, map, of, switchMap, tap, timer } from 'rxjs';
+import { EMPTY, Observable, catchError, exhaustMap, switchMap, tap, timer } from 'rxjs';
 import { Robot, RobotHistory } from '../../core/models';
+import { OlderHistory } from '../../core/older-history';
 import { problemMessage } from '../../core/problem-message';
 import { RobotsApi } from '../../core/robots-api';
 import { BatteryBar } from '../../shared/battery-bar';
 import { StateBadge } from '../../shared/state-badge';
 
 const REFRESH_INTERVAL_MS = 1000;
+
+interface ViewSettings {
+  poll: boolean;
+  history: boolean;
+}
 
 @Component({
   selector: 'app-robots',
@@ -17,24 +23,27 @@ const REFRESH_INTERVAL_MS = 1000;
 })
 export class Robots {
   private readonly api = inject(RobotsApi);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly autoRefresh = signal(true);
   protected readonly showHistory = signal(false);
   protected readonly robots = signal<Robot[]>([]);
-  /** History per robot id; null while Show history is off or not loaded yet. */
-  protected readonly histories = signal<Map<number, RobotHistory[]> | null>(null);
   protected readonly lastRefresh = signal<Date | null>(null);
   protected readonly error = signal<string | null>(null);
+  protected readonly olderHistory = new OlderHistory<number, RobotHistory>((id, page) => this.api.getHistory(id, page));
 
   constructor() {
-    const settings = computed(() => ({ poll: this.autoRefresh(), history: this.showHistory() }));
+    const settings = computed<ViewSettings>(() => ({ poll: this.autoRefresh(), history: this.showHistory() }));
+    let previous: ViewSettings | null = null;
     toObservable(settings)
       .pipe(
-        switchMap(({ poll, history }) => {
-          // Polling on: tick every second. Polling off: load once only to show freshly requested history.
-          const ticks = poll ? timer(0, REFRESH_INTERVAL_MS) : history && !this.histories() ? timer(0) : EMPTY;
+        switchMap((current) => {
+          // While paused, reload once only when history was switched on (the robots loaded so far have none).
+          const reload = !previous || (current.history && !previous.history);
+          previous = current;
+          const ticks = current.poll ? timer(0, REFRESH_INTERVAL_MS) : reload ? timer(0) : EMPTY;
           // exhaustMap skips ticks while a request is still running (no piled-up requests).
-          return ticks.pipe(exhaustMap(() => this.load(history)));
+          return ticks.pipe(exhaustMap(() => this.load(current.history)));
         }),
         takeUntilDestroyed(),
       )
@@ -43,20 +52,22 @@ export class Robots {
 
   protected setShowHistory(checked: boolean): void {
     if (!checked) {
-      this.histories.set(null);
+      this.olderHistory.clear();
     }
     this.showHistory.set(checked);
   }
 
+  protected loadOlder(robot: Robot): void {
+    this.olderHistory
+      .loadMore(robot.id, robot.history ?? [])
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ error: (error: unknown) => this.error.set(problemMessage(error)) });
+  }
+
   private load(withHistory: boolean): Observable<unknown> {
-    return this.api.getRobots().pipe(
-      switchMap((robots) => {
-        const histories$: Observable<Map<number, RobotHistory[]> | null> = withHistory ? this.loadHistories(robots) : of(null);
-        return histories$.pipe(map((histories) => ({ robots, histories })));
-      }),
-      tap(({ robots, histories }) => {
+    return this.api.getRobots(withHistory).pipe(
+      tap((robots) => {
         this.robots.set(robots);
-        this.histories.set(histories);
         this.lastRefresh.set(new Date());
         this.error.set(null);
       }),
@@ -64,15 +75,6 @@ export class Robots {
         this.error.set(problemMessage(error));
         return EMPTY;
       }),
-    );
-  }
-
-  private loadHistories(robots: Robot[]): Observable<Map<number, RobotHistory[]>> {
-    if (robots.length === 0) {
-      return of(new Map());
-    }
-    return forkJoin(robots.map((robot) => this.api.getHistory(robot.id))).pipe(
-      map((histories) => new Map(robots.map((robot, i) => [robot.id, histories[i]]))),
     );
   }
 }

@@ -15,13 +15,14 @@ public class RobotSyncServiceTests
     private readonly CancellationToken _ct = TestContext.Current.CancellationToken;
     private readonly IKukaClient _kuka = Substitute.For<IKukaClient>();
     private readonly IRobotRepository _robots = Substitute.For<IRobotRepository>();
+    private readonly SyncReadiness _readiness = new();
     private readonly RobotSyncService _service;
 
     public RobotSyncServiceTests()
     {
         var time = Substitute.For<TimeProvider>();
         time.GetUtcNow().Returns(Now);
-        _service = new RobotSyncService(_kuka, _robots, time, NullLogger<RobotSyncService>.Instance);
+        _service = new RobotSyncService(_kuka, _robots, _readiness, time, NullLogger<RobotSyncService>.Instance);
     }
 
     private static Robot Stored(string code = "R1") => new()
@@ -210,6 +211,58 @@ public class RobotSyncServiceTests
         var ex = await Record.ExceptionAsync(() => _service.SyncAsync(_ct));
 
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public async Task SuccessWithAtLeastOneRobot_OpensMissionSyncGate()
+    {
+        Given([Same()], Stored());
+
+        await _service.SyncAsync(_ct);
+
+        Assert.True(_readiness.WaitForRobotsAsync(_ct).IsCompletedSuccessfully);
+    }
+
+    [Fact]
+    public async Task SuccessWithZeroRobots_KeepsGateClosed()
+    {
+        Given([]);
+
+        await _service.SyncAsync(_ct);
+
+        Assert.False(_readiness.WaitForRobotsAsync(_ct).IsCompleted);
+    }
+
+    [Fact]
+    public async Task KukaError_KeepsGateClosed()
+    {
+        _kuka.RobotQueryAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new KukaException("TIMEOUT", "timeout"));
+
+        await _service.SyncAsync(_ct);
+
+        Assert.False(_readiness.WaitForRobotsAsync(_ct).IsCompleted);
+    }
+
+    [Fact]
+    public async Task DbError_KeepsGateClosed()
+    {
+        Given([Same("R9")]);
+        _robots.SaveChangesAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("db down"));
+
+        await _service.SyncAsync(_ct);
+
+        Assert.False(_readiness.WaitForRobotsAsync(_ct).IsCompleted);
+    }
+
+    [Fact]
+    public async Task InvalidStatus_FailsTickAndKeepsGateClosed()
+    {
+        Given([Same("R9") with { Status = 8 }]);
+
+        await _service.SyncAsync(_ct);
+
+        await _robots.DidNotReceiveWithAnyArgs().SaveChangesAsync(_ct);
+        Assert.False(_readiness.WaitForRobotsAsync(_ct).IsCompleted);
     }
 
     [Fact]
