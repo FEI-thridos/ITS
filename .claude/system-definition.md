@@ -383,6 +383,7 @@ Pipeline variables (defined on the pipelines; secrets marked secret):
 | `AgentPoolName` | ✓ | ✓ | | self-hosted Windows agent pool |
 | `AgentName` | ✓ | ✓ | | exact agent (demand `Agent.Name`) |
 | `SonarProjectKey` | ✓ | | | SonarQube project key |
+| `SonarCaCertPath` | ✓ | | | PEM file of the self-signed SonarQube certificate on the agent host, e.g. `C:\certs\sonarqube.crt` |
 | `DeployPath` | | ✓ | | target folder on the agent host, e.g. `C:\deploy\kuka-fm-middleware` |
 | `DbName` | | ✓ | | → `__DB_NAME__` |
 | `DbUser` | | ✓ | ✓ | → `__DB_USER__` |
@@ -397,7 +398,7 @@ DB values (`DbName`, `DbUser`, `DbPassword`) must not contain `'`, `;`, line bre
 - **npm check:** `npm ci` + `npm audit --audit-level=high` (fail on high/critical) + frontend production build.
 - **NuGet check:** `dotnet list package --vulnerable --include-transitive` → fail when any found.
 - **Tests:** `dotnet test` (backend unit tests) with code coverage (`coverlet.collector` 10.1.0, OpenCover format) + publish `.trx` results.
-- **SonarQube** (extension tasks `SonarQubePrepare@7` / `SonarQubeAnalyze@7` / `SonarQubePublish@7`, service connection `SonarQube`, SonarQube Server 2025): **backend and frontend analysed** (.NET scanner wraps build + test; project base dir = repo root so `frontend/` is analysed too); **coverage only for the backend** – `frontend/**` excluded from coverage, `**/Data/Migrations/**` excluded from analysis and coverage, project key `$(SonarProjectKey)`, coverage from the OpenCover reports. The quality gate is reported but **does not fail** the pipeline, and neither does an unreachable SonarQube (Analyze/Publish `continueOnError`). During the Sonar-wrapped build the scanner disables TreatWarningsAsErrors (local builds still enforce it).
+- **SonarQube** (extension tasks `SonarQubePrepare@7` / `SonarQubeAnalyze@7` / `SonarQubePublish@7`, service connection `SonarQube`, SonarQube Server 2025): **backend and frontend analysed** (.NET scanner wraps build + test; project base dir = repo root so `frontend/` is analysed too); **coverage only for the backend** – `frontend/**` excluded from coverage, `**/Data/Migrations/**` excluded from analysis and coverage, project key `$(SonarProjectKey)`, coverage from the OpenCover reports. SonarQube uses a **self-signed certificate** (trusted in the agent host's Local Machine → Trusted Root store; host name via hosts file): the SonarQube steps get `NODE_EXTRA_CA_CERTS=$(SonarCaCertPath)` (extension tasks run on Node) and `SONAR_SCANNER_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT` (Java scanner engine uses the Windows trust store). The quality gate is reported but **does not fail** the pipeline, and neither does an unreachable SonarQube (Analyze/Publish `continueOnError`). During the Sonar-wrapped build the scanner disables TreatWarningsAsErrors (local builds still enforce it).
 
 ### CD (`ci-cd/cd.yml`)
 - **Manual run only** (`trigger: none`, `pr: none`, no pipeline-completion triggers).

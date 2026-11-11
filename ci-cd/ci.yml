@@ -5,6 +5,7 @@
 #   AgentPoolName    - name of the self-hosted agent pool (Windows agent on the Docker host)
 #   AgentName        - name of the agent in that pool
 #   SonarProjectKey  - SonarQube project key
+#   SonarCaCertPath  - path to the PEM file of the SonarQube server certificate on the agent host
 # Required service connection: 'SonarQube' (SonarQube Server).
 
 trigger: none
@@ -61,6 +62,9 @@ steps:
         sonar.projectBaseDir=$(Build.SourcesDirectory)
         sonar.exclusions=**/Data/Migrations/**,frontend/node_modules/**,frontend/dist/**,frontend/.angular/**
         sonar.coverage.exclusions=frontend/**,**/Data/Migrations/**
+    env:   # self-signed SonarQube cert: Node task code uses the PEM, the Java scanner engine the Windows root store
+      NODE_EXTRA_CA_CERTS: $(SonarCaCertPath)
+      SONAR_SCANNER_OPTS: -Djavax.net.ssl.trustStoreType=Windows-ROOT
 
   - powershell: |
       dotnet restore KukaFm.Middleware.slnx
@@ -102,9 +106,15 @@ steps:
   - task: SonarQubeAnalyze@7
     displayName: SonarQube - analyze
     continueOnError: true   # an unreachable SonarQube server must not fail CI
+    env:
+      NODE_EXTRA_CA_CERTS: $(SonarCaCertPath)
+      SONAR_SCANNER_OPTS: -Djavax.net.ssl.trustStoreType=Windows-ROOT
 
   - task: SonarQubePublish@7
     displayName: SonarQube - publish quality gate result
     continueOnError: true   # the quality gate is reported only; it never fails the run
     inputs:
       pollingTimeoutSec: '300'
+    env:
+      NODE_EXTRA_CA_CERTS: $(SonarCaCertPath)
+      SONAR_SCANNER_OPTS: -Djavax.net.ssl.trustStoreType=Windows-ROOT
