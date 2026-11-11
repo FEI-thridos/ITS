@@ -54,6 +54,7 @@ public static class MissionEndpoints
         MissionOutcome.NotFound => TypedResults.Problem(statusCode: StatusCodes.Status404NotFound, title: "Mission not found", detail: result.Detail),
         MissionOutcome.NotCancelable => TypedResults.Problem(statusCode: StatusCodes.Status409Conflict, title: "Mission not cancelable", detail: result.Detail),
         MissionOutcome.KukaError => TypedResults.Problem(statusCode: StatusCodes.Status502BadGateway, title: "KUKA FM error", detail: result.Detail),
+        MissionOutcome.NotStored => TypedResults.Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Mission not stored", detail: result.Detail),
         MissionOutcome.NotReady => TypedResults.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Service not ready", detail: result.Detail),
         _ => throw new UnreachableException($"No HTTP mapping for {result.Outcome}"),
     };

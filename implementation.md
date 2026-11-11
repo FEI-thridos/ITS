@@ -10,8 +10,8 @@ Recap of the work done so far and the planned next phases.
 | 4 | Backbone (scaffolding) with agents | ✅ Done |
 | 5 | Feature: Robot management | ✅ Done |
 | 6 | Feature: Mission management | ✅ Done |
-| 7 | Testing and hardening | ⏳ Planned |
-| 8 | Deployment via CI/CD | ⏳ Planned |
+| 7 | Testing and hardening | ✅ Done |
+| 8 | Deployment via CI/CD | 🔄 Pipelines ready – first runs pending |
 
 Workflow used from phase 4 on: **planner → user approves → expert agents implement → reviewer → user reviews.**
 From phase 5 on the planner maps every step to backlog **acceptance criteria**, and the reviewer validates them and routes findings to the owning agent.
@@ -166,7 +166,6 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 **Open**
 - KUKA FM down → live sync not verified (moved to phase 8 checks).
 - Docker build failed twice before succeeding (BuildKit / `npm ci`), no file changes – watch in CD.
-- Header alignment with mockup → phase 6.
 
 **Backlog:** 1.2.1.1–1.2.1.4, 1.2.2.1–1.2.2.4, 1.2.3.1 (except mission-sync signal), 1.2.3.2–1.2.3.4
 
@@ -220,35 +219,97 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 
 ---
 
-## Phase 7 – Testing and hardening ⏳
+## Phase 7 – Testing and hardening ✅
 
-- Review edge-case coverage against system-definition §11.
-- Run `includeHistory` and paginated history against real data.
-- Decide handling of a DB save failure after KUKA accepted a dispatch.
-- Full dev stack run: dispatch → sync → cancel → history, verified in UI and Seq.
-- Logging check: user operations, KUKA calls, sync results; no secrets in logs.
-- Reviewer pass over the whole codebase (minimal code, spec conformity).
-- Fix findings; final `docker compose` verification.
+**Goal:** make missions and robots harder to break, check views against realistic data, full review.
+
+**Key decisions**
+- Dispatch: once KUKA accepted, the KUKA call and DB save ignore client disconnects; a failed save → **500** "Mission {code} was accepted by KUKA FM but could not be stored; it is not tracked." (no compensating cancel).
+- Dispatch dialog on 500: closes, persistent banner until Dismiss (no accidental second mission).
+- Malformed requests (bad query values, invalid JSON) → **400** in every environment.
+- Logging: EF Core and HttpClient framework logs at Warning (except the startup migration line); own user-operation, KUKA-call and sync logs at Information.
+- Battery level confirmed as real percentage (idle robots at 1 %).
+
+**Backend** (`backend-expert`)
+- Dispatch hardening + `ThrowOnBadRequest = false`; Serilog overrides.
+- 7 new edge-case tests (save failure, client cancel after KUKA, readiness gate cases, fallback with unknown robot, KUKA logs without token) → **188 tests**.
+
+**Frontend** (`frontend-expert`)
+- Dispatch 500 → dialog closes, persistent error banner.
+
+**Ops** (`ops-infra-expert`)
+- Dev-only seed `docker/dev/seed-dev-data.sql`: 8 `SEED-` robots (statuses 1–7), 120 missions (all 9 statuses), history 0–250 rows; one transaction, guard (no `SEED-` robots / no missions), never in images or compose.
+
+**Live (read-only) – KUKA FM was reachable again**
+- TLS with the self-signed cert works; real robot sync (3 robots) every 5 s.
+- Field types confirmed: `robotId` string, `status` / `batteryLevel` numbers; `jobQuery` returned no jobs.
+- No dispatch / cancel sent (real robots).
+
+**Review** (`reviewer`)
+- Seeded run: filters, sorting, `includeHistory` (≤ 100), paging over 250 rows incl. the 100/101 tie, 400/404/409, startup order, no secrets in logs – all met.
+- Full codebase pass: no dead code, DTOs ↔ frontend ↔ §7 consistent, tests cover §11.
+- Findings fixed: 500 on malformed requests, seed run procedure and guard, dispatch 500 UX, log noise; re-check **approve**.
+
+**Verified (final check)**
+- `dotnet build -c Release` 0 warnings · 188/188 tests · no vulnerable packages · `npm audit` 0 · `ng build`.
+- Compose config dev + prod (separate volumes); stack up, `/api/health` 200, migrations line logged, no framework noise; flaky build did not reproduce.
+
+**Open**
+- Live dispatch, cancel (status 31), mission sync on real jobs, robot change history, token check with the real token → phase 8.
+- Dev volume with seed data to be deleted before phase 8.
+
+**Backlog:** strengthens 1.1.1.2, 1.1.1.5, 1.1.2.5, 1.1.3.4, 1.1.4.4, 1.1.5.4, 1.2.1.4, 1.2.2.4, 1.2.3.1, 1.2.3.4, 1.3.1.1–1.3.1.5 (no new items)
 
 ---
 
-## Phase 8 – Deployment via CI/CD ⏳
+## Phase 8 – Deployment via CI/CD 🔄
 
-**Prerequisites**
-- Git repository in Azure DevOps (user).
-- Pipelines created from `ci-cd/ci.yml` and `ci-cd/cd.yml`.
-- Pipeline variables: `AgentPoolName`, `AgentName`, `DbName`, `DbUser`, `DbPassword` (secret), `KukaAccessToken` (secret).
-- Hosts entry for `kukafm.its.fei` on the agent host (`147.175.126.137`).
-- KUKA FM reachable (was down during phase 5).
+**Goal:** two simple manual pipelines on the local Windows agent – CI checks the code, CD deploys to local Docker.
 
-**Steps**
-1. Run CI manually → green build, vuln check, audit, test results published.
-2. Verify `$(AgentPoolName)` resolves; adjust if not.
-3. Run CD manually → placeholders replaced, stack built and started, smoke check green.
-4. Verify production: UI on `:8080`, `/api/health`, Seq logs, robots synced from real KUKA FM.
-   - TLS handshake with the trusted self-signed cert succeeds.
-   - KUKA field types match (`status`, `batteryLevel` numeric; `robotId`, `code` strings).
-   - `/api/robots/abc/history` returns ProblemDetails.
-   - Dispatch and cancel work against real KUKA FM; status 31 appears after a cancel; `jobQuery` field types match.
-5. Import backlog (`backlog.csv`) into Azure Boards; close completed items.
-6. Document the final solution in the Wiki (acceptance criterion).
+**Key decisions**
+- **CI:** npm check (`npm ci`, `audit` high, prod build) · NuGet vulnerability check · unit tests with coverage (`coverlet.collector` 10.1.0, OpenCover) + `.trx` published · SonarQube (`SonarQube` service connection, SonarQube Server 2025): backend **and** frontend analysed, coverage only for the backend, migrations excluded; quality gate and an unreachable Sonar **never fail** the run.
+- **CD:** validate secrets → mirror repo (no `.git`) to a dedicated `$(DeployPath)` → fill placeholders there with PowerShell (no jq) → `compose build --no-cache` → `up -d` → smoke check `:8080` + `/api/health` → `docker builder prune -af`.
+- No automatic triggers; pool and agent from pipeline variables.
+- DB values must not contain `'`, `;`, line breaks, leading/trailing spaces or start with `"`; DB credentials are fixed at the first creation of the Production volume; the dev stack must not run on the deployment host.
+
+**Pipeline variables**
+
+| Variable | CI | CD | Secret |
+|---|---|---|---|
+| `AgentPoolName`, `AgentName` | ✓ | ✓ | |
+| `SonarProjectKey` | ✓ | | |
+| `DeployPath` | | ✓ | |
+| `DbName` | | ✓ | |
+| `DbUser`, `DbPassword`, `KukaAccessToken` | | ✓ | ✓ |
+
+**Done**
+- `backend-expert`: `coverlet.collector` 10.1.0 (approved).
+- `ops-infra-expert`: `ci.yml` and `cd.yml` rewritten (jq download, SHA256 check and placeholder restore removed).
+- `reviewer`: approve after fixes (exact Sonar report paths, NuGet output on failure, trailing `\` in `DeployPath`, Sonar Analyze non-blocking, stricter DB value checks).
+
+**Verified locally**
+- Release build 0 warnings · exact CI test command under PowerShell 5.1: 188/188, one trx + one OpenCover file matched · no vulnerable packages · `npm audit` 0.
+- All 10 pipeline scripts parse under PowerShell 5.1; CD validate / mirror / replace dry runs with tricky values.
+
+**First-run checklist (user)**
+1. Commit and push to the Azure DevOps repo.
+2. Create the CI pipeline from `ci-cd/ci.yml` and set its variables.
+3. Create the CD pipeline from `ci-cd/cd.yml` and set its variables (secrets marked secret).
+4. Run CI:
+   - `$(AgentPoolName)` resolves (adjust if not).
+   - Test results published.
+   - SonarQube shows the backend with coverage and `frontend/src/**` without coverage; if the frontend is missing, add `sonar.scanner.scanAll=true`.
+5. Run CD: placeholders replaced, stack up, smoke check green.
+6. Verify production:
+   - UI on `:8080`, `/api/health`, Seq logs.
+   - Robot sync with the real KUKA token; no token in logs.
+   - A deliberate test dispatch and cancel; status 31 appears after the cancel; `jobQuery` field types match.
+7. Import backlog (`backlog.csv`) into Azure Boards; close completed items.
+8. Document the final solution in the Wiki (acceptance criterion).
+
+**Prerequisites still on the user side**
+- Hosts entry for `kukafm.its.fei` (`147.175.126.137`) on the agent host.
+- KUKA FM reachable.
+- Fresh Production DB (created by the first CD run).
+
+**Backlog:** 1.3, 1.3.2.1–1.3.2.4, 1.3.3.1–1.3.3.5 (confirmed on first runs)

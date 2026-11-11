@@ -50,10 +50,11 @@ kuka-fm-middleware/
 │   ├── docker-compose.yml
 │   ├── .env                 # development values
 │   ├── .env.prod            # production placeholders (filled by CD)
-│   └── certs/kukafm.crt     # public cert of the self-signed KUKA FM server
+│   ├── certs/kukafm.crt     # public cert of the self-signed KUKA FM server
+│   └── dev/seed-dev-data.sql # dev-only sample data (never in images or production)
 ├── ci-cd/
-│   ├── ci.yml               # build, vulnerability checks, unit tests
-│   └── cd.yml               # manual deployment to local Docker
+│   ├── ci.yml               # npm + NuGet checks, unit tests with coverage, SonarQube
+│   └── cd.yml               # manual deployment: copy to DeployPath, fill secrets, compose build/up
 ├── backlog/                 # backlog.csv / backlog.xlsx for Azure Boards
 └── documentation/
     ├── specification.md     # specification with use cases, process diagrams, ERD, views
@@ -80,5 +81,5 @@ Build, test and run commands are listed in [CLAUDE.md → Commands](CLAUDE.md#co
 | 4 | Backbone (scaffolding) | Solution, Angular app, Docker stack and CI/CD pipelines built and reviewed by the agents. |
 | 5 | Feature: Robot management | KUKA client, robot sync with history, robots API and view (history embedded + paginated). |
 | 6 | Feature: Mission management | Dispatch, cancel (readiness gate, field validation), mission sync with history and the missions view. |
-| 7 | Testing and hardening | Edge-case coverage, end-to-end run, logging and full review *(planned)*. |
-| 8 | Deployment via CI/CD | First CI/CD runs, production checks against the real KUKA FM, Wiki *(planned)*. |
+| 7 | Testing and hardening | Dispatch hardening, extra edge-case tests, seeded and live read-only checks, full review. |
+| 8 | Deployment via CI/CD | Two manual pipelines ready (CI with SonarQube, CD to a dedicated folder); first runs, live checks and Wiki pending. |

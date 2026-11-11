@@ -25,6 +25,7 @@ public enum MissionOutcome
     NotCancelable,
     NotReady,
     KukaError,
+    NotStored,
 }
 
 /// <summary>Result of dispatch / cancel; endpoints map <see cref="Outcome"/> to the HTTP status.</summary>
@@ -111,9 +112,11 @@ public class MissionService(
 
         var missionCode = NewCode();
         var requestId = NewCode();
+        // From here on the request is not cancellable by the client: a disconnect must not leave a mission accepted
+        // by KUKA untracked (the HttpClient timeout still applies).
         try
         {
-            await kuka.SubmitMissionAsync(requestId, missionCode, robot.RobotCode, startNode, targetNode, ct);
+            await kuka.SubmitMissionAsync(requestId, missionCode, robot.RobotCode, startNode, targetNode, CancellationToken.None);
         }
         catch (KukaException ex)
         {
@@ -136,8 +139,19 @@ public class MissionService(
             CreatedAt = now,
             UpdatedAt = now,
         };
-        missions.Add(mission);
-        await missions.SaveChangesAsync(ct);
+        try
+        {
+            missions.Add(mission);
+            await missions.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Mission {MissionCode} (request {RequestId}) to robot {RobotCode} from {StartNode} to {TargetNode} was accepted by KUKA FM but could not be stored; it is not tracked",
+                missionCode, requestId, robot.RobotCode, startNode, targetNode);
+            return new(MissionOutcome.NotStored,
+                Detail: $"Mission {missionCode} was accepted by KUKA FM but could not be stored; it is not tracked.");
+        }
 
         logger.LogInformation("Mission {MissionCode} dispatched to robot {RobotCode} from {StartNode} to {TargetNode}",
             missionCode, robot.RobotCode, startNode, targetNode);

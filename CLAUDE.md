@@ -102,4 +102,9 @@ docker compose -f docker/docker-compose.yml down                                
 docker builder prune -af                                                         # clean build cache
 ```
 
+**Dev seed data** (dev only, never in production – see header of `docker/dev/seed-dev-data.sql`)
+```
+Get-Content docker/dev/seed-dev-data.sql | docker compose -f docker/docker-compose.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U root -d kukafm
+```
+
 **Dev URLs:** app http://localhost:8080 · API http://localhost:8080/api (health: `/api/health`) · Seq http://localhost:5341

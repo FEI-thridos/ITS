@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MissionsApi } from '../../core/missions-api';
@@ -61,6 +62,8 @@ export class DispatchDialog {
 
   readonly dispatched = output<Mission>();
   readonly closed = output<void>();
+  /** 500: KUKA FM accepted the mission but it was not stored – the parent closes the dialog (a retry would dispatch twice). */
+  readonly notStored = output<string>();
 
   protected readonly robots = signal<Robot[]>([]);
   protected readonly robotId = signal<number | null>(null);
@@ -107,6 +110,10 @@ export class DispatchDialog {
       .subscribe({
         next: (mission) => this.dispatched.emit(mission),
         error: (error: unknown) => {
+          if (error instanceof HttpErrorResponse && error.status === 500) {
+            this.notStored.emit(problemMessage(error));
+            return;
+          }
           this.submitting.set(false);
           this.showError(error);
         },

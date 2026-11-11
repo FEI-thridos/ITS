@@ -1,8 +1,11 @@
-# CI - build, vulnerability audits and backend unit tests. Manual runs only.
+# CI - npm/NuGet vulnerability checks, frontend build, backend build + unit tests with coverage,
+# SonarQube analysis (backend + frontend; coverage from backend only). Manual runs only.
 #
 # Required pipeline variables (defined on the pipeline):
-#   AgentPoolName  - name of the self-hosted agent pool (Windows agent on the Docker host)
-#   AgentName      - name of the agent in that pool
+#   AgentPoolName    - name of the self-hosted agent pool (Windows agent on the Docker host)
+#   AgentName        - name of the agent in that pool
+#   SonarProjectKey  - SonarQube project key
+# Required service connection: 'SonarQube' (SonarQube Server).
 
 trigger: none
 pr: none
@@ -32,7 +35,33 @@ steps:
     inputs:
       version: 24.x
 
-  # Backend
+  # Frontend
+  - powershell: |
+      npm ci
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      npm audit --audit-level=high
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      npx ng build --configuration production
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    displayName: Frontend - npm ci, npm audit, production build
+    errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
+    workingDirectory: frontend
+
+  # Backend + SonarQube: the .NET scanner wraps build + test. projectBaseDir = repo root, so frontend/
+  # (JS/TS/HTML/CSS, analysed with the Node installed above) is in scope, not only the MSBuild projects.
+  - task: SonarQubePrepare@7
+    displayName: SonarQube - prepare
+    inputs:
+      SonarQube: SonarQube
+      scannerMode: dotnet
+      projectKey: $(SonarProjectKey)
+      extraProperties: |
+        sonar.cs.opencover.reportsPaths=$(TestResultsDir)\*\coverage.opencover.xml
+        sonar.cs.vstest.reportsPaths=$(TestResultsDir)\*.trx
+        sonar.projectBaseDir=$(Build.SourcesDirectory)
+        sonar.exclusions=**/Data/Migrations/**,frontend/node_modules/**,frontend/dist/**,frontend/.angular/**
+        sonar.coverage.exclusions=frontend/**,**/Data/Migrations/**
+
   - powershell: |
       dotnet restore KukaFm.Middleware.slnx
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -44,8 +73,8 @@ steps:
 
   - powershell: |
       $output = dotnet list KukaFm.Middleware.slnx package --vulnerable --include-transitive
-      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       $output
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       if ($output -match 'has the following vulnerable packages') {
         Write-Host '##vso[task.logissue type=error]Vulnerable NuGet packages found.'
         exit 1
@@ -55,9 +84,9 @@ steps:
     workingDirectory: backend
 
   - powershell: |
-      dotnet test KukaFm.Middleware.slnx --no-build -c $(BuildConfiguration) --logger trx --results-directory "$(TestResultsDir)"
+      dotnet test KukaFm.Middleware.slnx --no-build -c $(BuildConfiguration) --logger trx --results-directory "$(TestResultsDir)" --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    displayName: Backend - unit tests
+    displayName: Backend - unit tests with coverage
     errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
     workingDirectory: backend
 
@@ -66,18 +95,16 @@ steps:
     condition: succeededOrFailed()
     inputs:
       testResultsFormat: VSTest
-      testResultsFiles: '**/*.trx'
+      testResultsFiles: '*.trx'
       searchFolder: $(TestResultsDir)
       testRunTitle: Backend unit tests
 
-  # Frontend
-  - powershell: |
-      npm ci
-      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      npm audit --audit-level=high
-      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      npm run build
-      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    displayName: Frontend - install, audit, build
-    errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
-    workingDirectory: frontend
+  - task: SonarQubeAnalyze@7
+    displayName: SonarQube - analyze
+    continueOnError: true   # an unreachable SonarQube server must not fail CI
+
+  - task: SonarQubePublish@7
+    displayName: SonarQube - publish quality gate result
+    continueOnError: true   # the quality gate is reported only; it never fails the run
+    inputs:
+      pollingTimeoutSec: '300'

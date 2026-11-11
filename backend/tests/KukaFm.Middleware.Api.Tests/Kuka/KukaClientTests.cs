@@ -153,6 +153,39 @@ public class KukaClientTests
         Assert.DoesNotContain(loggedValues, v => v.Contains(Token));
     }
 
+    private object?[] SingleLog(LogLevel level) =>
+        Assert.Single(_logger.ReceivedCalls(), c => c.GetArguments() is [LogLevel l, ..] && l == level).GetArguments();
+
+    private static Dictionary<string, object?> Values(object?[] log) =>
+        ((IReadOnlyList<KeyValuePair<string, object?>>)log[2]!).ToDictionary(kv => kv.Key, kv => kv.Value);
+
+    [Fact]
+    public async Task Failure_LogsWarningWithApiNameAndCodeButNotToken()
+    {
+        var (client, _) = Create(() => Json(Failed));
+
+        await Assert.ThrowsAsync<KukaException>(() => client.SubmitMissionAsync("req1", "mc1", "R1", "A", "B", _ct));
+
+        var warning = SingleLog(LogLevel.Warning);
+        var values = Values(warning);
+        Assert.Equal(("submitMission", "100409", "mission code duplicate"), (values["ApiName"], values["Code"], values["Message"]));
+        Assert.DoesNotContain(values.Values, v => (v?.ToString() ?? "").Contains(Token));
+        Assert.DoesNotContain(Token, warning[2]!.ToString());
+    }
+
+    [Fact]
+    public async Task Success_LogsInformationWithApiNameAndDuration()
+    {
+        var (client, _) = Create(() => Json(Ok));
+
+        await client.MissionCancelAsync("req2", "mc1", _ct);
+
+        var values = Values(SingleLog(LogLevel.Information));
+        Assert.Equal("missionCancel", values["ApiName"]);
+        Assert.IsType<double>(values["DurationMs"]);
+        Assert.DoesNotContain(_logger.ReceivedCalls(), c => c.GetArguments() is [LogLevel.Warning, ..]);
+    }
+
     [Fact]
     public async Task SubmitMission_PostsExactRackMoveBody()
     {

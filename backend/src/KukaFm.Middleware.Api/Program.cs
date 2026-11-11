@@ -13,6 +13,8 @@ builder.Services.AddSerilog((services, logger) => logger
     .ReadFrom.Services(services));
 
 builder.Services.AddProblemDetails();
+// Binding failures return 400 ProblemDetails in every environment instead of throwing (500) in Development.
+builder.Services.Configure<RouteHandlerOptions>(o => o.ThrowOnBadRequest = false);
 
 builder.Services.AddDbContext<AppDbContext>(options => options
     .UseNpgsql(builder.Configuration.GetConnectionString("Default"))

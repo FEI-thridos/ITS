@@ -27,6 +27,12 @@
   <button type="button" class="primary" (click)="dispatchOpen.set(true)">+ Dispatch mission</button>
 </div>
 
+@if (dispatchError(); as message) {
+  <div class="error" role="alert">
+    {{ message }}
+    <button type="button" class="link" (click)="dispatchError.set(null)">Dismiss</button>
+  </div>
+}
 @if (error(); as message) {
   <div class="error" role="alert">{{ message }}</div>
 }
@@ -99,7 +105,8 @@
 </div>
 
 @if (dispatchOpen()) {
-  <app-dispatch-dialog (dispatched)="onDispatched($event)" (closed)="dispatchOpen.set(false)" />
+  <app-dispatch-dialog (dispatched)="onDispatched($event)" (closed)="dispatchOpen.set(false)"
+    (notStored)="onNotStored($event)" />
 }
 @if (cancelCode(); as code) {
   <app-cancel-dialog [missionCode]="code" (cancelled)="onCancelled(code)" (closed)="cancelCode.set(null)" />

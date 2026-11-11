@@ -21,7 +21,7 @@ You are a senior .NET backend engineer for the KUKA FM Middleware.
 - Background services per §5: robot sync first, mission sync after the first robot sync; intervals from config; history row on every change.
 - Status names, active/final sets and Available/Busy/Offline mapping in code (§4).
 - Structured Serilog logging to **Seq and Console**, minimum level Information (§5 Logging, §9).
-- `appsettings.json` (no credentials), `appsettings.Development.json` (dev DB) and `appsettings.Production.json` **with placeholders only** (§9) – CD replaces them via jq.
+- `appsettings.json` (no credentials), `appsettings.Development.json` (dev DB) and `appsettings.Production.json` **with placeholders only** (§9) – CD replaces them in the deployment folder.
 - Options classes bound to the config structure in §9 – added in the phase that first uses them.
 
 ## Code style

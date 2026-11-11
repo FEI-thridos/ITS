@@ -44,6 +44,8 @@ export class Missions {
   protected readonly lastRefresh = signal<Date | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly dispatchOpen = signal(false);
+  /** Persistent until dismissed – not cleared by a successful refresh like `error`. */
+  protected readonly dispatchError = signal<string | null>(null);
   protected readonly cancelCode = signal<string | null>(null);
   protected readonly toast = signal<string | null>(null);
   protected readonly olderHistory = new OlderHistory<string, MissionHistory>((code, page) => this.api.getHistory(code, page));
@@ -92,6 +94,12 @@ export class Missions {
   protected onDispatched(mission: Mission): void {
     this.dispatchOpen.set(false);
     this.showToast(`Mission ${mission.missionCode} dispatched`);
+    this.refresh$.next();
+  }
+
+  protected onNotStored(message: string): void {
+    this.dispatchOpen.set(false);
+    this.dispatchError.set(message);
     this.refresh$.next();
   }
 

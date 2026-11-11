@@ -2,6 +2,7 @@ using KukaFm.Middleware.Api.Data;
 using KukaFm.Middleware.Api.Kuka;
 using KukaFm.Middleware.Api.Missions;
 using KukaFm.Middleware.Api.Sync;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -69,6 +70,7 @@ public class MissionServiceTests
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
+    [InlineData(false, true)]
     public async Task Cancel_BeforeSyncsReady_ReturnsNotReadyWithoutKukaCall(bool robotsReady, bool missionsReady)
     {
         var readiness = new SyncReadiness();
@@ -235,6 +237,49 @@ public class MissionServiceTests
         Assert.Equal((MissionOutcome.KukaError, $"KUKA FM error {code}: {message}"), (result.Outcome, result.Detail));
         _missions.DidNotReceiveWithAnyArgs().Add(default!);
         await _missions.DidNotReceiveWithAnyArgs().SaveChangesAsync(_ct);
+    }
+
+    [Fact]
+    public async Task Dispatch_SaveFailsAfterKukaAccepted_ReturnsNotStoredAndLogsError()
+    {
+        string? sentRequestId = null, sentMissionCode = null;
+        await _kuka.SubmitMissionAsync(
+            Arg.Do<string>(r => sentRequestId = r), Arg.Do<string>(m => sentMissionCode = m),
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        _missions.SaveChangesAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("db down"));
+        var logger = Substitute.For<ILogger<MissionService>>();
+        var time = Substitute.For<TimeProvider>();
+        var service = new MissionService(_missions, _robots, _kuka, _readiness, time, logger);
+
+        var result = await service.DispatchAsync(Valid, _ct);
+
+        Assert.Equal((MissionOutcome.NotStored, $"Mission {sentMissionCode} was accepted by KUKA FM but could not be stored; it is not tracked."),
+            (result.Outcome, result.Detail));
+        Assert.Null(result.Mission);
+        await _kuka.DidNotReceiveWithAnyArgs().MissionCancelAsync(default!, default!, _ct);
+        var error = Assert.Single(logger.ReceivedCalls(), c => c.GetArguments() is [LogLevel.Error, ..]).GetArguments();
+        var values = ((IReadOnlyList<KeyValuePair<string, object?>>)error[2]!).ToDictionary(kv => kv.Key, kv => kv.Value);
+        Assert.Equal((sentMissionCode, sentRequestId, "R1", "Labak-CHTN-33", "Labak-CHTN-25"),
+            (values["MissionCode"], values["RequestId"], values["RobotCode"], values["StartNode"], values["TargetNode"]));
+        Assert.IsType<InvalidOperationException>(error[3]);
+    }
+
+    [Fact]
+    public async Task Dispatch_RequestCancelledAfterKukaAccepted_StillStoresMission()
+    {
+        using var cts = new CancellationTokenSource();
+        await _kuka.SubmitMissionAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Do<CancellationToken>(_ => cts.Cancel()));
+
+        var result = await _service.DispatchAsync(Valid, cts.Token);
+
+        Assert.True(cts.IsCancellationRequested);
+        Assert.Equal(MissionOutcome.Success, result.Outcome);
+        await _kuka.Received(1).SubmitMissionAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), CancellationToken.None);
+        _missions.Received(1).Add(Arg.Any<Mission>());
+        await _missions.Received(1).SaveChangesAsync(CancellationToken.None);
     }
 
     // --- cancel ---

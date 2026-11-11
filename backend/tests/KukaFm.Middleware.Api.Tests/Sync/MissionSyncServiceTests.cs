@@ -229,6 +229,34 @@ public class MissionSyncServiceTests
         await AssertTickFailed();
     }
 
+    [Fact]
+    public async Task FallbackJobWithRobotNotInDatabase_WholeTickFails()
+    {
+        var changed = Stored("mc1", status: 10);
+        var missing = Stored("mc2");
+        Given([new KukaJob("mc1", 20, "R1")], changed, missing);
+        _kuka.JobQueryByCodeAsync("mc2", Arg.Any<CancellationToken>()).Returns([new KukaJob("mc2", 30, "R9")]);
+
+        await _service.SyncAsync(_ct);
+
+        await _kuka.Received(1).JobQueryByCodeAsync("mc2", Arg.Any<CancellationToken>());
+        await AssertTickFailed();
+    }
+
+    [Fact]
+    public async Task LaterFailedTick_KeepsReadinessOpen()
+    {
+        Given([new KukaJob("mc1", 20, "R1")], Stored());
+        await _service.SyncAsync(_ct);
+        Assert.True(_readiness.IsReady);
+
+        _kuka.JobQueryAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new KukaException("TIMEOUT", "timeout"));
+        await _service.SyncAsync(_ct);
+
+        await _kuka.Received(2).JobQueryAsync(Arg.Any<CancellationToken>());
+        Assert.True(_readiness.IsReady);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

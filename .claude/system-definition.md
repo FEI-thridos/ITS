@@ -61,6 +61,7 @@ kuka-fm-middleware/
 │   └── tests/KukaFm.Middleware.Api.Tests/  # xUnit unit tests
 ├── frontend/                # Angular app `kuka-fm-middleware-web` (served by nginx)
 ├── docker/                  # Dockerfiles, nginx.conf, docker-compose.yml, .env (dev), .env.prod (placeholders)
+│   └── dev/                 # dev-only helpers (seed-dev-data.sql) – never in images, compose or production
 ├── ci-cd/                   # Azure Pipelines YAML (ci.yml, cd.yml)
 ├── backlog/                 # backlog.csv, backlog.xlsx (Azure Boards, Agile process)
 └── documentation/           # specification.md, drawio, mermaid, mockups, images
@@ -150,7 +151,8 @@ Request – exactly these fields (verified working example; all other KUKA field
 
 ### 4.4 `robotQuery` (UC8)
 - Request `{}` – always all robots, **no filters**.
-- Only status codes 1–7 are sent by KUKA. `batteryLevel` is a percentage 0–100. Values always fit the column lengths in §6.
+- Only status codes 1–7 are sent by KUKA. `batteryLevel` is a percentage 0–100 (verified live: idle robots report e.g. `1.0` = 1 %). Values always fit the column lengths in §6.
+- Verified live types: `robotId` string, `status` number, `batteryLevel` number, envelope `code` string (`null` on jobQuery).
 - Response `data[]`: `robotId` (= our `robot_code`), `robotType`, `mapCode`, `floorNumber`, `buildingCode`, `containerCode`, `status`, `occupyStatus`, `batteryLevel`, `nodeCode`, `x`, `y`, `robotOrientation`, `missionCode`, …
 
 **Robot status codes and mapped state** (mapping is done **in code**, not stored)
@@ -177,8 +179,11 @@ Request – exactly these fields (verified working example; all other KUKA field
 ### UC1 – Dispatch mission
 - Input: `robotId` (must exist in `robot` table), `startNode`, `targetNode` – all required. Inputs are trimmed; whitespace-only = empty; max 64 chars. Start may equal target; robot state (busy/offline) is not checked.
 - Invalid input → **400 ValidationProblemDetails** with `errors` keyed by camelCase field (unknown robot under `robotId`); no KUKA call.
+- A malformed body (invalid JSON, wrong types) → plain **400** ProblemDetails (no field `errors`), in every environment.
 - Validate → call `submitMission` → only on success insert `mission` with status 10 / Created → **201** with the Mission DTO.
 - On KUKA error: **502** with `detail` "KUKA FM error {code}: {message}", log it, **do not** store the mission.
+- Once KUKA has accepted, the request is no longer cancellable by the client (KUKA call and DB save use `CancellationToken.None`; the HttpClient timeout still applies).
+- DB save fails after KUKA accepted → Error log (missionCode, requestId, robot, nodes) and **500** ProblemDetails `detail` "Mission {code} was accepted by KUKA FM but could not be stored; it is not tracked." No compensating cancel.
 
 ### UC2 – Cancel mission
 - Mission must exist (404) and be **cancelable (10, 20, 25, 50)** else 409 – incl. 28 Cancelling (already being cancelled) and all final statuses.
@@ -283,7 +288,7 @@ Base path `/api` (reachable only through nginx). JSON, camelCase. Errors as RFC 
 |---|---|---|---|
 | GET | `/api/missions?state=active\|finished&includeHistory=true` | List missions (no `state` = all), sorted `created_at desc, id desc` | 200, 400 invalid `state` |
 | GET | `/api/missions/{missionCode}/history?page=1&pageSize=100` | Previous states of a mission, paginated | 200, 400, 404 |
-| POST | `/api/missions` | Dispatch (UC1) | 201 (Mission DTO, no `Location` header), 400 validation, 502 KUKA error, 503 not ready |
+| POST | `/api/missions` | Dispatch (UC1) | 201 (Mission DTO, no `Location` header), 400 validation, 500 accepted but not stored, 502 KUKA error, 503 not ready |
 | POST | `/api/missions/{missionCode}/cancel` | Force cancel (UC2) | 200 (empty), 404, 409 not cancelable, 502 KUKA error, 503 not ready |
 | GET | `/api/robots?includeHistory=true` | List robots incl. mapped `state` | 200 |
 | GET | `/api/robots/{id}/history?page=1&pageSize=100` | Previous states of a robot, paginated | 200, 400, 404 |
@@ -311,6 +316,7 @@ Robot history DTO: `robotCode, robotType, status, statusName, state, batteryLeve
 Source mockup: `documentation/mockups/views-mockup.html` (+ screenshots in `documentation/images/`). Follow it.
 
 - **Missions view**: table (code, status badge with code, robot, start/target node, created, updated) – **no container / priority** (removed; mockup is outdated there); filter All / Active / Finished; *Show history* adds grey previous-state rows (via `includeHistory`; "Load older" pages the history endpoint when a mission has > 100 rows); *Auto-refresh (1 s)* checkbox + last refresh time; `+ Dispatch mission` dialog (robot select from `GET /api/robots`, start node, target node – all required); *Cancel* button only on cancelable missions (10, 20, 25, 50) with confirmation dialog mentioning FORCE; 503 "Synchronization not ready yet" shown in the dialogs.
+- Dispatch dialog on **500** (accepted by KUKA FM but not stored): the dialog closes and the message is shown as a persistent error banner in the Missions view (no retry from the dialog – a retry would dispatch a second real mission).
 - **Robots view**: table (code, type, mapped state badge, KUKA status with code, battery bar, map, node, mission, updated); *Show history* (via `includeHistory`, only while checked; history rows show `valid from – valid to`; "Load older" when > 100 rows); *Auto-refresh (1 s)*.
 - Polling: frontend polls every **1 s** (no SignalR/WebSockets) – one request per view and tick.
 - App header follows the mockup.
@@ -324,7 +330,7 @@ Source mockup: `documentation/mockups/views-mockup.html` (+ screenshots in `docu
 - `appsettings.json` – defaults below, **no credentials** (`ConnectionStrings:Default` empty, `AccessToken` empty).
 - `appsettings.Development.json` – dev DB connection: `Host=postgres;Port=5432;Database=kukafm;Username=root;Password=password;GSS Encryption Mode=Disable`.
 - DB authentication is **username/password only** – no Kerberos/GSSAPI. Every connection string sets `GSS Encryption Mode=Disable`.
-- `appsettings.Production.json` – created by backend-expert, committed **with placeholders only** (`__DB_USER__`, `__DB_PASSWORD__`, `__KUKA_ACCESS_TOKEN__`, …). CD replaces them with secret pipeline variables using **jq** before any docker command; images are built only during deployment, so real values never reach the repo.
+- `appsettings.Production.json` – created by backend-expert, committed **with placeholders only** (`__DB_USER__`, `__DB_PASSWORD__`, `__KUKA_ACCESS_TOKEN__`, …). CD copies the repo to `$(DeployPath)` and replaces them there (PowerShell) with secret pipeline variables before any docker command; images are built only during deployment, so real values never reach the repo.
 - Options classes are added in the phases that use them (not during scaffolding).
 
 ```json
@@ -341,13 +347,13 @@ Source mockup: `documentation/mockups/views-mockup.html` (+ screenshots in `docu
   },
   "Sync": { "RobotIntervalSeconds": 5, "MissionIntervalSeconds": 5 },
   "Serilog": {
-    "MinimumLevel": { "Default": "Information" },
+    "MinimumLevel": { "Default": "Information", "Override": { "Microsoft.EntityFrameworkCore": "Warning", "Microsoft.EntityFrameworkCore.Migrations": "Information", "System.Net.Http": "Warning" } },
     "WriteTo": [ { "Name": "Console" }, { "Name": "Seq", "Args": { "serverUrl": "http://seq:5341" } } ]
   }
 }
 ```
 - All unknown KUKA query parameters live in config, not in code.
-- Serilog logs to **Seq and Console** (console for `docker compose logs`), minimum level **Information** everywhere (no overrides).
+- Serilog logs to **Seq and Console** (console for `docker compose logs`), minimum level **Information**, with overrides `Microsoft.EntityFrameworkCore` and `System.Net.Http` = **Warning** (no per-query / per-request framework noise; our own user-operation, KUKA-call and sync logs stay at Information) and `Microsoft.EntityFrameworkCore.Migrations` = **Information** (keeps the startup "Applying migration / No migrations were applied" line).
 
 ---
 
@@ -370,23 +376,37 @@ Source mockup: `documentation/mockups/views-mockup.html` (+ screenshots in `docu
 - DB migrations: created by backend (EF Core), applied by the API on startup (`Database.Migrate()`); no separate pipeline step.
 - After deploy: `docker builder prune -af` to clean build cache.
 
+Pipeline variables (defined on the pipelines; secrets marked secret):
+
+| Variable | CI | CD | Secret | Purpose |
+|---|---|---|---|---|
+| `AgentPoolName` | ✓ | ✓ | | self-hosted Windows agent pool |
+| `AgentName` | ✓ | ✓ | | exact agent (demand `Agent.Name`) |
+| `SonarProjectKey` | ✓ | | | SonarQube project key |
+| `DeployPath` | | ✓ | | target folder on the agent host, e.g. `C:\deploy\kuka-fm-middleware` |
+| `DbName` | | ✓ | | → `__DB_NAME__` |
+| `DbUser` | | ✓ | ✓ | → `__DB_USER__` |
+| `DbPassword` | | ✓ | ✓ | → `__DB_PASSWORD__` (must not contain `;`) |
+
+DB values (`DbName`, `DbUser`, `DbPassword`) must not contain `'`, `;`, line breaks, leading/trailing spaces or start with `"`. DB user/password are fixed when the Production volume is first created – changing them later needs a manual volume reset. Dev and prod share the compose project name and port 8080 – the dev stack must not run on the deployment host.
+| `KukaAccessToken` | | ✓ | ✓ | → `__KUKA_ACCESS_TOKEN__` |
+
 ### CI (`ci-cd/ci.yml`)
 - **No automatic triggers** (`trigger: none`, `pr: none`) – manual runs only.
-- Agent pool and agent name from Azure Pipeline variables (variable names proposed by ops-infra-expert; defined on the pipeline). Verify the pool name resolves at queue time; if not, ask the user.
 - Tooling installed by pipeline steps (agent has nothing preinstalled): `UseDotNet@2` (.NET 10 SDK), `UseNode@1` (Node 24 LTS).
-- Build backend + frontend.
-- NuGet vulnerability check: `dotnet list package --vulnerable --include-transitive` → fail when any found.
-- `npm audit` (fail on high/critical).
-- `dotnet test` (backend unit tests) + publish results.
+- **npm check:** `npm ci` + `npm audit --audit-level=high` (fail on high/critical) + frontend production build.
+- **NuGet check:** `dotnet list package --vulnerable --include-transitive` → fail when any found.
+- **Tests:** `dotnet test` (backend unit tests) with code coverage (`coverlet.collector` 10.1.0, OpenCover format) + publish `.trx` results.
+- **SonarQube** (extension tasks `SonarQubePrepare@7` / `SonarQubeAnalyze@7` / `SonarQubePublish@7`, service connection `SonarQube`, SonarQube Server 2025): **backend and frontend analysed** (.NET scanner wraps build + test; project base dir = repo root so `frontend/` is analysed too); **coverage only for the backend** – `frontend/**` excluded from coverage, `**/Data/Migrations/**` excluded from analysis and coverage, project key `$(SonarProjectKey)`, coverage from the OpenCover reports. The quality gate is reported but **does not fail** the pipeline, and neither does an unreachable SonarQube (Analyze/Publish `continueOnError`). During the Sonar-wrapped build the scanner disables TreatWarningsAsErrors (local builds still enforce it).
 
 ### CD (`ci-cd/cd.yml`)
 - **Manual run only** (`trigger: none`, `pr: none`, no pipeline-completion triggers).
-- Download a **pinned jq release** (`jq-windows-amd64.exe`, v1.8.x, official jqlang GitHub) into the pipeline temp folder – no system install.
-- Replace placeholders in `appsettings.Production.json` (jq) and `docker/.env.prod` with secret pipeline variables – **before** any docker command.
-- `docker compose --env-file docker/.env.prod build` + `up -d` on the agent's Docker Desktop (API applies migrations on startup).
-- Smoke check: `http://localhost:8080` and `http://localhost:8080/api/health`.
-- `docker builder prune -af`.
-- All secrets only in pipeline variables (defined on the pipeline, marked secret).
+1. Mirror the checked-out repo (without `.git`) to `$(DeployPath)` (`robocopy /MIR` – `$(DeployPath)` is a pipeline variable and must be a **dedicated folder** holding only this deployment; Docker volumes are not affected).
+2. In `$(DeployPath)` only: replace placeholders in `appsettings.Production.json` (PowerShell JSON editing – no external tool download) and `docker/.env.prod` with the secret pipeline variables – **before** any docker command. The repo workspace keeps its placeholders.
+3. In `$(DeployPath)`: `docker compose -f docker/docker-compose.yml --env-file docker/.env.prod build --no-cache`, then `up -d` on the agent's Docker Desktop (API applies migrations on startup).
+4. Smoke check: `http://localhost:8080` and `http://localhost:8080/api/health` (retry, fail the run otherwise; on failure print the api log tail).
+5. `docker builder prune -af` (always).
+- All secrets only in pipeline variables (defined on the pipeline, marked secret); never echoed.
 
 ---
 
