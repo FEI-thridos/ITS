@@ -54,6 +54,7 @@ kuka-fm-middleware/
 │   └── dev/seed-dev-data.sql # dev-only sample data (never in images or production)
 ├── ci-cd/
 │   ├── ci.yml               # npm + NuGet checks, unit tests with coverage, SonarQube
+│   ├── ci-no-sonar.yml      # same checks and unit tests, without SonarQube
 │   └── cd.yml               # manual deployment: copy to DeployPath, fill secrets, compose build/up
 ├── backlog/                 # backlog.csv / backlog.xlsx for Azure Boards
 └── documentation/

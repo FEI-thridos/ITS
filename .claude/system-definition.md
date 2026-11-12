@@ -400,6 +400,10 @@ DB values (`DbName`, `DbUser`, `DbPassword`) must not contain `'`, `;`, line bre
 - **Tests:** `dotnet test` (backend unit tests) with code coverage (`coverlet.collector` 10.1.0, OpenCover format) + publish `.trx` results.
 - **SonarQube** (extension tasks `SonarQubePrepare@7` / `SonarQubeAnalyze@7` / `SonarQubePublish@7`, service connection `SonarQube`, SonarQube Server 2025): **backend and frontend analysed** (.NET scanner wraps build + test; project base dir = repo root so `frontend/` is analysed too); **coverage only for the backend** – `frontend/**` excluded from coverage, `**/Data/Migrations/**` excluded from analysis and coverage, project key `$(SonarProjectKey)`, coverage from the OpenCover reports. SonarQube uses a **self-signed certificate** (trusted in the agent host's Local Machine → Trusted Root store; host name via hosts file): the SonarQube steps get `NODE_EXTRA_CA_CERTS=$(SonarCaCertPath)` (extension tasks run on Node) and `SONAR_SCANNER_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT` (Java scanner engine uses the Windows trust store). The quality gate is reported but **does not fail** the pipeline, and neither does an unreachable SonarQube (Analyze/Publish `continueOnError`). During the Sonar-wrapped build the scanner disables TreatWarningsAsErrors (local builds still enforce it).
 
+### CI without SonarQube (`ci-cd/ci-no-sonar.yml`)
+- Simplified alternative to `ci.yml` (which stays unchanged): same triggers, pool/agent, tooling, npm check, NuGet check, unit tests + published `.trx` results.
+- **No SonarQube** at all (no Sonar tasks, variables, service connection or certificate settings) and **no coverage collection**. Variables: `AgentPoolName`, `AgentName` only.
+
 ### CD (`ci-cd/cd.yml`)
 - **Manual run only** (`trigger: none`, `pr: none`, no pipeline-completion triggers).
 1. Mirror the checked-out repo (without `.git`) to `$(DeployPath)` (`robocopy /MIR` – `$(DeployPath)` is a pipeline variable and must be a **dedicated folder** holding only this deployment; Docker volumes are not affected).
@@ -408,6 +412,10 @@ DB values (`DbName`, `DbUser`, `DbPassword`) must not contain `'`, `;`, line bre
 4. Smoke check: `http://localhost:8080` and `http://localhost:8080/api/health` (retry, fail the run otherwise; on failure print the api log tail).
 5. `docker builder prune -af` (always).
 - All secrets only in pipeline variables (defined on the pipeline, marked secret); never echoed.
+
+### Agent host (one-time setup by the user)
+- The agent service runs as `NT AUTHORITY\NETWORK SERVICE`. It needs: **read** on `$(SonarCaCertPath)`, **modify** on `$(DeployPath)` (folder created beforehand), membership in `docker-users` (agent restarted afterwards), and Docker Desktop running in a logged-in session.
+- Exact commands (with `{path_here}` placeholders): `implementation.md` → Phase 8 → *Agent host setup*.
 
 ---
 

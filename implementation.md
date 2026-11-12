@@ -268,6 +268,7 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 
 **Key decisions**
 - **CI:** npm check (`npm ci`, `audit` high, prod build) · NuGet vulnerability check · unit tests with coverage (`coverlet.collector` 10.1.0, OpenCover) + `.trx` published · SonarQube (`SonarQube` service connection, SonarQube Server 2025): backend **and** frontend analysed, coverage only for the backend, migrations excluded; quality gate and an unreachable Sonar **never fail** the run.
+- **CI without SonarQube** (`ci-cd/ci-no-sonar.yml`): same as CI but no SonarQube steps, variables or coverage – only `AgentPoolName` / `AgentName` needed.
 - **CD:** validate secrets → mirror repo (no `.git`) to a dedicated `$(DeployPath)` → fill placeholders there with PowerShell (no jq) → `compose build --no-cache` → `up -d` → smoke check `:8080` + `/api/health` → `docker builder prune -af`.
 - No automatic triggers; pool and agent from pipeline variables.
 - DB values must not contain `'`, `;`, line breaks, leading/trailing spaces or start with `"`; DB credentials are fixed at the first creation of the Production volume; the dev stack must not run on the deployment host.
@@ -278,13 +279,14 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 |---|---|---|---|
 | `AgentPoolName`, `AgentName` | ✓ | ✓ | |
 | `SonarProjectKey` | ✓ | | |
+| `SonarCaCertPath` | ✓ | | |
 | `DeployPath` | | ✓ | |
 | `DbName` | | ✓ | |
 | `DbUser`, `DbPassword`, `KukaAccessToken` | | ✓ | ✓ |
 
 **Done**
 - `backend-expert`: `coverlet.collector` 10.1.0 (approved).
-- `ops-infra-expert`: `ci.yml` and `cd.yml` rewritten (jq download, SHA256 check and placeholder restore removed).
+- `ops-infra-expert`: `ci.yml` and `cd.yml` rewritten (jq download, SHA256 check and placeholder restore removed); SonarQube self-signed certificate handling in `ci.yml`; simplified `ci-no-sonar.yml` added.
 - `reviewer`: approve after fixes (exact Sonar report paths, NuGet output on failure, trailing `\` in `DeployPath`, Sonar Analyze non-blocking, stricter DB value checks).
 
 **Verified locally**
@@ -293,7 +295,7 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 
 **First-run checklist (user)**
 1. Commit and push to the Azure DevOps repo.
-2. Create the CI pipeline from `ci-cd/ci.yml` and set its variables.
+2. Prepare the agent host (see **Agent host setup** below), then create the CI pipeline from `ci-cd/ci.yml` (or `ci-cd/ci-no-sonar.yml` without SonarQube) and set its variables.
 3. Create the CD pipeline from `ci-cd/cd.yml` and set its variables (secrets marked secret).
 4. Run CI:
    - `$(AgentPoolName)` resolves (adjust if not).
@@ -311,5 +313,36 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 - Hosts entry for `kukafm.its.fei` (`147.175.126.137`) on the agent host.
 - KUKA FM reachable.
 - Fresh Production DB (created by the first CD run).
+- Agent host prepared for the agent account (below).
+
+**Agent host setup (one-time, elevated PowerShell)**
+
+The agent service runs as `NT AUTHORITY\NETWORK SERVICE`. Replace each `{path_here}` with the real path.
+
+1. SonarQube certificate – a **PEM** file (starts with `-----BEGIN CERTIFICATE-----`) of the self-signed SonarQube certificate; the agent needs **read** access. Its path is the CI variable `SonarCaCertPath`.
+   ```powershell
+   icacls "{path_here}" /grant "NT AUTHORITY\NETWORK SERVICE:(R)"
+   ```
+   If the export is binary (DER), convert it first: `certutil -encode "{path_here}" "{path_here}"` (first = DER input, second = PEM output).
+2. Deployment folder – a **dedicated** folder (CD mirrors the repo into it with `robocopy /MIR`); create it first, then grant **modify**. Its path is the CD variable `DeployPath`.
+   ```powershell
+   New-Item -ItemType Directory -Force "{path_here}" | Out-Null
+   ```
+   ```powershell
+   icacls "{path_here}" /grant "NT AUTHORITY\NETWORK SERVICE:(OI)(CI)M"
+   ```
+3. Docker access – add the agent account to `docker-users`, then restart the agent service.
+   ```powershell
+   Add-LocalGroupMember -Group "docker-users" -Member "NT AUTHORITY\NETWORK SERVICE"
+   ```
+   ```powershell
+   Get-Service vstsagent* | Restart-Service
+   ```
+4. Docker Desktop must run in a logged-in user session (enable *Start Docker Desktop when you sign in*).
+
+Notes:
+- Files under a user profile work thanks to *Bypass traverse checking*, but only while the grant sits on the file/folder itself – re-run the `icacls` command if the file or folder is recreated.
+- After a CD run the deployment folder contains the real secrets (`appsettings.Production.json`, `docker/.env.prod`) – keep it private and outside git.
+- Behind a proxy, NETWORK SERVICE needs its own proxy configuration (nuget.org, npm, Docker Hub, SonarQube).
 
 **Backlog:** 1.3, 1.3.2.1–1.3.2.4, 1.3.3.1–1.3.3.5 (confirmed on first runs)
