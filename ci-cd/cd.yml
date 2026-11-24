@@ -108,8 +108,7 @@ steps:
       KUKA_ACCESS_TOKEN: $(KukaAccessToken)
 
   - powershell: |
-      Write-Host "User: $(whoami)"
-      docker context show
+      Set-Location $env:DEPLOY_PATH
 
       docker compose $(ComposeArgs) build --no-cache
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -117,9 +116,12 @@ steps:
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     displayName: Docker compose build + up
     errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
-    workingDirectory: $(DeployPath)
+    env:
+      DEPLOY_PATH: $(DeployPath)
 
   - powershell: |
+      Set-Location $env:DEPLOY_PATH
+
       $ProgressPreference = 'SilentlyContinue'
       foreach ($url in 'http://localhost:8080', 'http://localhost:8080/api/health') {
         $ok = $false
@@ -139,7 +141,8 @@ steps:
       }
     displayName: Smoke check
     errorActionPreference: continue   # native stderr must not abort; exit codes are checked explicitly
-    workingDirectory: $(DeployPath)
+    env:
+      DEPLOY_PATH: $(DeployPath)
 
   - powershell: |
       docker builder prune -af
