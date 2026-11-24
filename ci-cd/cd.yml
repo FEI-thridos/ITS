@@ -108,6 +108,9 @@ steps:
       KUKA_ACCESS_TOKEN: $(KukaAccessToken)
 
   - powershell: |
+      Write-Host "User: $(whoami)"
+      docker context show
+
       docker compose $(ComposeArgs) build --no-cache
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       docker compose $(ComposeArgs) up -d
