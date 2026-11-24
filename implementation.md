@@ -1,6 +1,6 @@
 # KUKA FM Middleware – Implementation Log
 
-Recap of the work done so far and the planned next phases.
+Recap of all phases of the project – from specification to deployment.
 
 | # | Phase | Status |
 |---|---|---|
@@ -11,7 +11,7 @@ Recap of the work done so far and the planned next phases.
 | 5 | Feature: Robot management | ✅ Done |
 | 6 | Feature: Mission management | ✅ Done |
 | 7 | Testing and hardening | ✅ Done |
-| 8 | Deployment via CI/CD | 🔄 Pipelines ready – first runs pending |
+| 8 | Deployment via CI/CD | ✅ Done |
 
 Workflow used from phase 4 on: **planner → user approves → expert agents implement → reviewer → user reviews.**
 From phase 5 on the planner maps every step to backlog **acceptance criteria**, and the reviewer validates them and routes findings to the owning agent.
@@ -262,7 +262,7 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 
 ---
 
-## Phase 8 – Deployment via CI/CD 🔄
+## Phase 8 – Deployment via CI/CD ✅
 
 **Goal:** two simple manual pipelines on the local Windows agent – CI checks the code, CD deploys to local Docker.
 
@@ -293,21 +293,21 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 - Release build 0 warnings · exact CI test command under PowerShell 5.1: 188/188, one trx + one OpenCover file matched · no vulnerable packages · `npm audit` 0.
 - All 10 pipeline scripts parse under PowerShell 5.1; CD validate / mirror / replace dry runs with tricky values.
 
-**First-run checklist (user)**
-1. Commit and push to the Azure DevOps repo.
-2. Prepare the agent host (see **Agent host setup** below), then create the CI pipeline from `ci-cd/ci.yml` (or `ci-cd/ci-no-sonar.yml` without SonarQube) and set its variables.
-3. Create the CD pipeline from `ci-cd/cd.yml` and set its variables (secrets marked secret).
-4. Run CI:
+**First-run checklist (user) – completed**
+1. ✅ Commit and push to the Azure DevOps repo.
+2. ✅ Prepare the agent host (see **Agent host setup** below), then create the CI pipeline from `ci-cd/ci.yml` (or `ci-cd/ci-no-sonar.yml` without SonarQube) and set its variables.
+3. ✅ Create the CD pipeline from `ci-cd/cd.yml` and set its variables (secrets marked secret).
+4. ✅ Run CI – finishes successfully:
    - `$(AgentPoolName)` resolves (adjust if not).
    - Test results published.
    - SonarQube shows the backend with coverage and `frontend/src/**` without coverage; if the frontend is missing, add `sonar.scanner.scanAll=true`.
-5. Run CD: placeholders replaced, stack up, smoke check green.
-6. Verify production:
+5. ✅ Run CD: placeholders replaced, stack up, smoke check green (agent as Local System).
+6. ✅ Verify production – live checks against KUKA FM tested and working:
    - UI on `:8080`, `/api/health`, Seq logs.
    - Robot sync with the real KUKA token; no token in logs.
    - A deliberate test dispatch and cancel; status 31 appears after the cancel; `jobQuery` field types match.
-7. Import backlog (`backlog.csv`) into Azure Boards; close completed items.
-8. Document the final solution in the Wiki (acceptance criterion).
+7. ➖ Backlog import into Azure Boards – dropped (decided by the user; `backlog/` stays the reference).
+8. Document the final solution in the Wiki (acceptance criterion of the original spec) – outside this repository.
 
 **Prerequisites still on the user side**
 - Hosts entry for `kukafm.its.fei` (`147.175.126.137`) on the agent host.
@@ -317,32 +317,30 @@ From phase 5 on the planner maps every step to backlog **acceptance criteria**, 
 
 **Agent host setup (one-time, elevated PowerShell)**
 
-The agent service runs as `NT AUTHORITY\NETWORK SERVICE`. Replace each `{path_here}` with the real path.
+The agent service runs as **Local System** (`NT AUTHORITY\SYSTEM`). With `NETWORK SERVICE` the Docker Desktop engine refused access ("Access is denied" on `docker compose`), even with `docker-users` membership and a reboot. Replace each `{path_here}` with the real path.
 
-1. SonarQube certificate – a **PEM** file (starts with `-----BEGIN CERTIFICATE-----`) of the self-signed SonarQube certificate; the agent needs **read** access. Its path is the CI variable `SonarCaCertPath`.
+1. Agent service log on – set the Azure Pipelines agent service to **Local System**, then restart it (or `services.msc` → agent service → *Log On* → *Local System account*).
    ```powershell
-   icacls "{path_here}" /grant "NT AUTHORITY\NETWORK SERVICE:(R)"
-   ```
-   If the export is binary (DER), convert it first: `certutil -encode "{path_here}" "{path_here}"` (first = DER input, second = PEM output).
-2. Deployment folder – a **dedicated** folder (CD mirrors the repo into it with `robocopy /MIR`); create it first, then grant **modify**. Its path is the CD variable `DeployPath`.
-   ```powershell
-   New-Item -ItemType Directory -Force "{path_here}" | Out-Null
-   ```
-   ```powershell
-   icacls "{path_here}" /grant "NT AUTHORITY\NETWORK SERVICE:(OI)(CI)M"
-   ```
-3. Docker access – add the agent account to `docker-users`, then restart the agent service.
-   ```powershell
-   Add-LocalGroupMember -Group "docker-users" -Member "NT AUTHORITY\NETWORK SERVICE"
+   Get-CimInstance Win32_Service -Filter "Name LIKE 'vstsagent%'" | Invoke-CimMethod -MethodName Change -Arguments @{ StartName = "LocalSystem" }
    ```
    ```powershell
    Get-Service vstsagent* | Restart-Service
    ```
-4. Docker Desktop must run in a logged-in user session (enable *Start Docker Desktop when you sign in*).
+2. SonarQube certificate – a **PEM** file (starts with `-----BEGIN CERTIFICATE-----`) of the self-signed SonarQube certificate. Its path is the CI variable `SonarCaCertPath`. Local System can read it by default (SYSTEM has full control on user and system folders); no extra grant needed.
+   If the export is binary (DER), convert it first: `certutil -encode "{path_here}" "{path_here}"` (first = DER input, second = PEM output).
+3. Deployment folder – a **dedicated** folder (CD mirrors the repo into it with `robocopy /MIR`, deleting anything else in it). Its path is the CD variable `DeployPath`; Local System creates and writes it without extra grants.
+   ```powershell
+   New-Item -ItemType Directory -Force "{path_here}" | Out-Null
+   ```
+4. Docker Desktop must run in a logged-in user session (enable *Start Docker Desktop when you sign in*); the agent uses its engine.
 
 Notes:
-- Files under a user profile work thanks to *Bypass traverse checking*, but only while the grant sits on the file/folder itself – re-run the `icacls` command if the file or folder is recreated.
+- Local System is a highly privileged account – use the agent host only for this project's pipelines.
 - After a CD run the deployment folder contains the real secrets (`appsettings.Production.json`, `docker/.env.prod`) – keep it private and outside git.
-- Behind a proxy, NETWORK SERVICE needs its own proxy configuration (nuget.org, npm, Docker Hub, SonarQube).
+- Agent tool caches (.NET, Node, npm, NuGet) live in the Local System profile; the first run after switching downloads them again.
+- Behind a proxy, Local System needs its own proxy configuration (nuget.org, npm, Docker Hub, SonarQube).
+- The earlier `NETWORK SERVICE` grants (`icacls`, `docker-users` membership) are no longer needed and can be removed.
 
-**Backlog:** 1.3, 1.3.2.1–1.3.2.4, 1.3.3.1–1.3.3.5 (confirmed on first runs)
+**Status:** CI finishes successfully; CD deploys successfully with the agent as Local System; live checks against the real KUKA FM (robot sync, dispatch, cancel → status 31) work.
+
+**Backlog:** 1.3, 1.3.1.1–1.3.1.5, 1.3.2.1–1.3.2.4, 1.3.3.1–1.3.3.5 (confirmed by the pipeline runs); live checks confirm 1.1.x and 1.2.x end-to-end

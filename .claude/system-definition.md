@@ -414,7 +414,7 @@ DB values (`DbName`, `DbUser`, `DbPassword`) must not contain `'`, `;`, line bre
 - All secrets only in pipeline variables (defined on the pipeline, marked secret); never echoed.
 
 ### Agent host (one-time setup by the user)
-- The agent service runs as `NT AUTHORITY\NETWORK SERVICE`. It needs: **read** on `$(SonarCaCertPath)`, **modify** on `$(DeployPath)` (folder created beforehand), membership in `docker-users` (agent restarted afterwards), and Docker Desktop running in a logged-in session.
+- The agent service runs as **Local System** (`NT AUTHORITY\SYSTEM`) – `NETWORK SERVICE` is refused by the Docker Desktop engine. Local System reads `$(SonarCaCertPath)` and writes `$(DeployPath)` without extra grants; Docker Desktop must run in a logged-in user session.
 - Exact commands (with `{path_here}` placeholders): `implementation.md` → Phase 8 → *Agent host setup*.
 
 ---

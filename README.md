@@ -26,7 +26,7 @@
 ```
 kuka-fm-middleware/
 ├── README.md               # this file
-├── implementation.md       # implementation log: phases done and planned
+├── implementation.md       # implementation log: all phases, decisions and results
 ├── CLAUDE.md               # how to work: agents, rules, architecture, commands
 ├── .claude/
 │   ├── system-definition.md   # what to build: binding spec (KUKA contract, rules, data model, API)
@@ -72,7 +72,7 @@ Build, test and run commands are listed in [CLAUDE.md → Commands](CLAUDE.md#co
 
 ## Implementation log
 
-[implementation.md](implementation.md) records how the project is built, phase by phase – done phases with their decisions and results, and the planned ones:
+[implementation.md](implementation.md) records how the project was built, phase by phase – with the decisions and results of each phase:
 
 | # | Chapter | In short |
 |---|---|---|
@@ -83,4 +83,4 @@ Build, test and run commands are listed in [CLAUDE.md → Commands](CLAUDE.md#co
 | 5 | Feature: Robot management | KUKA client, robot sync with history, robots API and view (history embedded + paginated). |
 | 6 | Feature: Mission management | Dispatch, cancel (readiness gate, field validation), mission sync with history and the missions view. |
 | 7 | Testing and hardening | Dispatch hardening, extra edge-case tests, seeded and live read-only checks, full review. |
-| 8 | Deployment via CI/CD | Two manual pipelines ready (CI with SonarQube, CD to a dedicated folder); first runs, live checks and Wiki pending. |
+| 8 | Deployment via CI/CD | Two manual pipelines (CI with SonarQube, CD to a dedicated folder) running successfully; live checks against KUKA FM done. |
